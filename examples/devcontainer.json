@@ -1,0 +1,40 @@
+{
+  "name": "${localEnv:PROJECT_NAME}-${localWorkspaceFolderBasename}",
+  "image": "ghcr.io/zookanalytics/claude-devcontainer:latest",
+  "runArgs": [
+    "--name=${localEnv:PROJECT_NAME}-${localWorkspaceFolderBasename}",
+    "--cap-add=NET_ADMIN",
+    "--cap-add=NET_RAW",
+    "--cap-add=SYSLOG",
+    "--label=dev.orbstack.domains=${localWorkspaceFolderBasename}.${localEnv:PROJECT_NAME}.local",
+    "--label=dev.orbstack.http-port=3000"
+  ],
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "Anthropic.claude-code"
+      ]
+    }
+  },
+  "remoteUser": "node",
+  "mounts": [
+    "source=${localEnv:PROJECT_NAME}-bashhistory-${localWorkspaceFolderBasename},target=/commandhistory,type=volume",
+    "source=${localEnv:PROJECT_NAME}-claude-config,target=/home/node/.claude,type=volume",
+    "source=${localEnv:PROJECT_NAME}-shared-config,target=/home/node/.config,type=volume",
+    "source=${localEnv:PROJECT_NAME}-playwright-cache,target=/home/node/.cache/ms-playwright,type=volume",
+    "source=pnpm-store,target=/workspace/.pnpm-store,type=volume",
+    "source=${localEnv:PROJECT_NAME}-node-modules-${localWorkspaceFolderBasename},target=/workspace/node_modules,type=volume"
+  ],
+  "containerEnv": {
+    "PROJECT_NAME": "${localEnv:PROJECT_NAME}",
+    "CLAUDE_INSTANCE": "${localWorkspaceFolderBasename}",
+    "NODE_OPTIONS": "--max-old-space-size=4096",
+    "CLAUDE_CONFIG_DIR": "/home/node/.claude",
+    "PNPM_HOME": "/pnpm",
+    "npm_config_store_dir": "/workspace/.pnpm-store",
+    "npm_config_virtual_store_dir": ".pnpm-store/container/${localWorkspaceFolderBasename}"
+  },
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
+  "workspaceFolder": "/workspace",
+  "postCreateCommand": "/usr/local/bin/post-create.sh"
+}

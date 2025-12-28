@@ -1,0 +1,39 @@
+# Project-specific domains
+# Add domains your project needs beyond the base image
+
+# AI APIs (if using additional providers)
+# api.openai.com
+
+# Deployment platforms
+# vercel.com
+# api.vercel.com
+
+# Testing frameworks
+# playwright.dev
+
+# Error tracking / analytics
+# sentry.io
+# statsig.com
+
+# Fonts (web projects)
+# fonts.gstatic.com
+# fonts.googleapis.com
+
+# VS Code extensions
+# main.vscode-cdn.net
+# configs.gitkraken.dev
+
+# JSON schema validation
+# unpkg.com
+# json.schemastore.org
+
+# Certificate validation
+# crl3.digicert.com
+# ocsp.digicert.com
+
+# Local services
+# host.docker.internal
+
+# Backend services (examples)
+# api.your-service.com
+# your-backend.example.com
