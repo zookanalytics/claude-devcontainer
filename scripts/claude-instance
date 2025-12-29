@@ -1,0 +1,1544 @@
+#!/usr/bin/env bash
+# claude-instance: Manage multiple Claude development instances
+#
+# Usage:
+#   claude-instance create <name>    Create a new instance
+#   claude-instance list             List all instances
+#   claude-instance remove <name>    Remove an instance
+#   claude-instance open <name>      Open instance in VS Code
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PARENT_DIR="$(cd "$REPO_ROOT/.." && pwd)"
+CURRENT_INSTANCE="$(basename "$REPO_ROOT")"
+
+# Legacy support: INSTANCES_DIR points to parent (all instances are siblings)
+INSTANCES_DIR="$PARENT_DIR"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+GRAY='\033[0;90m'
+NC='\033[0m' # No Color
+
+# Metadata file name
+METADATA_FILE=".claude-metadata.json"
+
+# Derive project name from devcontainer.json or git remote
+get_project_name() {
+    local dir="${1:-$REPO_ROOT}"
+    local devcontainer="$dir/.devcontainer/devcontainer.json"
+
+    # Try to extract from devcontainer.json name field
+    if [[ -f "$devcontainer" ]] && command -v jq &>/dev/null; then
+        local name
+        name=$(jq -r '.name // empty' "$devcontainer" 2>/dev/null | sed 's/ -.*//' | tr '[:upper:]' '[:lower:]' | tr ' ' '-')
+        if [[ -n "$name" && "$name" != "null" ]]; then
+            echo "$name"
+            return
+        fi
+    fi
+
+    # Fall back to git remote name
+    if git -C "$dir" remote get-url origin &>/dev/null; then
+        git -C "$dir" remote get-url origin | sed -E 's/.*[\/:]([^\/]+)\.git$/\1/' | sed 's/\.git$//' | tr '[:upper:]' '[:lower:]'
+        return
+    fi
+
+    # Last resort: directory name
+    basename "$dir" | tr '[:upper:]' '[:lower:]'
+}
+
+# Project name for this repo (cached)
+PROJECT_NAME="$(get_project_name)"
+CONTAINER_PREFIX="${PROJECT_NAME}-"
+DASHBOARD_SESSION="${PROJECT_NAME}-dashboard"
+
+# Check if a directory is a claude-devcontainer project
+# Detects by looking for devcontainer.json with post-create.sh (base image marker)
+is_claude_devcontainer_project() {
+    local dir="$1"
+    local devcontainer="$dir/.devcontainer/devcontainer.json"
+
+    if [[ -f "$devcontainer" ]]; then
+        # Check for base image marker: postCreateCommand pointing to post-create.sh
+        if grep -q "/usr/local/bin/post-create.sh" "$devcontainer" 2>/dev/null; then
+            return 0
+        fi
+        # Also check for the image reference
+        if grep -q "ghcr.io/zookanalytics/claude-devcontainer" "$devcontainer" 2>/dev/null; then
+            return 0
+        fi
+    fi
+    return 1
+}
+
+# Find all claude-devcontainer projects in the parent directory (siblings)
+# that share the same project name
+find_project_repos() {
+    local parent="${1:-$PARENT_DIR}"
+
+    # Use nullglob to avoid iterating over literal glob pattern when no matches
+    shopt -s nullglob
+    local dirs=("$parent"/*)
+    shopt -u nullglob
+
+    for dir in "${dirs[@]}"; do
+        if [[ -d "$dir" ]] && is_claude_devcontainer_project "$dir"; then
+            # Check if it's the same project (same git remote or similar devcontainer name)
+            local dir_project
+            dir_project=$(get_project_name "$dir")
+            if [[ "$dir_project" == "$PROJECT_NAME" ]]; then
+                echo "$dir"
+            fi
+        fi
+    done
+}
+
+# Check if .env files match between two repos
+# Returns: "synced", "diverged", or list of diverged files
+check_env_sync() {
+    local instance_path="$1"
+    local reference_path="${2:-$REPO_ROOT}"
+    local diverged=()
+
+    for env_file in .env .env.local; do
+        local instance_file="$instance_path/$env_file"
+        local reference_file="$reference_path/$env_file"
+
+        if [[ -f "$instance_file" && -f "$reference_file" ]]; then
+            # Both exist - compare content
+            if ! diff -q "$instance_file" "$reference_file" >/dev/null 2>&1; then
+                diverged+=("$env_file")
+            fi
+        elif [[ -f "$instance_file" || -f "$reference_file" ]]; then
+            # One exists, one doesn't
+            diverged+=("$env_file")
+        fi
+        # If neither exists, that's fine (synced by absence)
+    done
+
+    if [[ ${#diverged[@]} -eq 0 ]]; then
+        echo "synced"
+    else
+        echo "${diverged[*]}"
+    fi
+}
+
+# Detect if running inside a devcontainer
+# CLAUDE_INSTANCE is set by devcontainer.json containerEnv
+is_inside_devcontainer() {
+    [ -n "${CLAUDE_INSTANCE:-}" ]
+}
+
+# Get the local workspace path (inside devcontainer)
+get_local_workspace() {
+    echo "/workspace"
+}
+
+# Sanitize instance name for Docker container naming
+# Docker names: [a-zA-Z0-9][a-zA-Z0-9_.-]
+sanitize_name() {
+    local name="$1"
+    # Convert to lowercase, replace spaces and invalid chars with hyphens
+    # Remove consecutive hyphens, trim leading/trailing hyphens
+    echo "$name" | tr '[:upper:]' '[:lower:]' | tr -s ' _/' '-' | sed 's/[^a-z0-9.-]/-/g' | sed 's/^-*//' | sed 's/-*$//' | sed 's/--*/-/g'
+}
+
+# Validate sanitized name is not empty or invalid
+validate_sanitized_name() {
+    local original="$1"
+    local sanitized="$2"
+
+    if [ -z "$sanitized" ]; then
+        echo -e "${RED}Error: Instance name '$original' becomes empty after sanitization${NC}"
+        echo "Instance names must contain at least one alphanumeric character (a-z, 0-9)"
+        echo "Valid examples: agent-1, frontend-dev, api-testing"
+        exit 1
+    fi
+
+    # Docker container names must start with alphanumeric
+    if [[ ! "$sanitized" =~ ^[a-z0-9] ]]; then
+        echo -e "${RED}Error: Sanitized name '$sanitized' must start with a letter or number${NC}"
+        echo "Original name: '$original'"
+        exit 1
+    fi
+}
+
+# Check if devcontainer CLI is installed
+check_devcontainer_cli() {
+    if ! command -v devcontainer &> /dev/null; then
+        echo -e "${RED}Error: devcontainer CLI is not installed${NC}"
+        echo ""
+        echo "The devcontainer CLI is required to open instances in dev containers."
+        echo ""
+        echo "Install it with:"
+        echo "  npm install -g @devcontainers/cli"
+        echo ""
+        echo "Or using your preferred package manager:"
+        echo "  yarn global add @devcontainers/cli"
+        echo "  pnpm add -g @devcontainers/cli"
+        exit 1
+    fi
+}
+
+# Metadata management functions
+get_metadata_path() {
+    local instance_path="$1"
+    echo "$instance_path/$METADATA_FILE"
+}
+
+create_metadata() {
+    local instance_path="$1"
+    local purpose="${2:-}"
+    local metadata_path=$(get_metadata_path "$instance_path")
+
+    local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    local username=$(whoami)
+
+    jq -n \
+        --arg created "$timestamp" \
+        --arg createdBy "$username" \
+        --arg purpose "$purpose" \
+        '{created: $created, createdBy: $createdBy, purpose: $purpose}' \
+        > "$metadata_path"
+}
+
+read_metadata() {
+    local instance_path="$1"
+    local metadata_path=$(get_metadata_path "$instance_path")
+
+    if [ -f "$metadata_path" ]; then
+        cat "$metadata_path"
+    else
+        # Return valid empty metadata for instances without metadata file
+        echo '{"created":"","createdBy":"","purpose":""}'
+    fi
+}
+
+update_metadata() {
+    local instance_path="$1"
+    local key="$2"
+    local value="$3"
+    local metadata_path=$(get_metadata_path "$instance_path")
+
+    if [ ! -f "$metadata_path" ]; then
+        create_metadata "$instance_path"
+    fi
+
+    local temp_file=$(mktemp)
+
+    # Use jq to update the field
+    jq --arg key "$key" --arg value "$value" \
+        'setpath([$key]; $value)' \
+        "$metadata_path" > "$temp_file" && mv "$temp_file" "$metadata_path"
+}
+
+update_purpose() {
+    local instance_path="$1"
+    local purpose="$2"
+    local metadata_path=$(get_metadata_path "$instance_path")
+
+    if [ ! -f "$metadata_path" ]; then
+        create_metadata "$instance_path" "$purpose"
+        return
+    fi
+
+    local temp_file=$(mktemp)
+
+    jq --arg purpose "$purpose" '.purpose = $purpose' \
+        "$metadata_path" > "$temp_file" && mv "$temp_file" "$metadata_path"
+}
+
+# Regenerate statusBar.json from template and metadata
+regenerate_status_bar() {
+    local workspace="${1:-$(get_local_workspace)}"
+    local template_path="$workspace/.vscode/statusBar.template.json"
+    local output_path="$workspace/.vscode/statusBar.json"
+    local metadata_path="$workspace/$METADATA_FILE"
+
+    # Check template exists
+    if [ ! -f "$template_path" ]; then
+        echo -e "${YELLOW}No statusBar.template.json found, skipping regeneration${NC}" >&2
+        return 0
+    fi
+
+    # Get purpose from metadata (default to "No Purpose Set")
+    local purpose="No Purpose Set"
+    if [ -f "$metadata_path" ]; then
+        purpose=$(jq -r '.purpose // "No Purpose Set"' "$metadata_path" 2>/dev/null)
+        if [ -z "$purpose" ] || [ "$purpose" = "null" ]; then
+            purpose="No Purpose Set"
+        fi
+    fi
+
+    # Generate statusBar.json by replacing placeholder
+    # Escape special sed characters in purpose (& \ /) for use in sed replacement
+    # Order matters: backslash first to avoid double-escaping
+    local escaped_purpose
+    escaped_purpose=$(printf '%s\n' "$purpose" \
+        | sed -e 's/\\/\\\\/g' \
+              -e 's/&/\\&/g' \
+              -e 's#/#\\/#g')
+    sed "s/{{PURPOSE}}/$escaped_purpose/g" "$template_path" > "$output_path"
+}
+
+# Check if jq is installed (required for metadata operations)
+check_jq() {
+    if ! command -v jq &> /dev/null; then
+        echo -e "${RED}Error: jq is not installed${NC}"
+        echo ""
+        echo "jq is required for metadata operations."
+        echo ""
+        echo "Install it with:"
+        echo "  brew install jq              (macOS)"
+        echo "  apt-get install jq           (Ubuntu/Debian)"
+        echo "  yum install jq               (CentOS/RHEL)"
+        exit 1
+    fi
+}
+
+# Validate path is safe to delete (prevent accidental deletion of wrong directories)
+validate_deletion_path() {
+    local path="$1"
+
+    # Path must be absolute
+    if [[ ! "$path" = /* ]]; then
+        echo -e "${RED}Error: Path must be absolute for deletion: $path${NC}"
+        exit 1
+    fi
+
+    # Path must not contain path traversal sequences
+    if [[ "$path" =~ \.\. ]]; then
+        echo -e "${RED}Error: Path contains '..' sequence, refusing to delete: $path${NC}"
+        exit 1
+    fi
+
+    # Path must be within INSTANCES_DIR
+    local real_path=$(realpath -m "$path" 2>/dev/null || echo "$path")
+    local real_instances=$(realpath -m "$INSTANCES_DIR" 2>/dev/null || echo "$INSTANCES_DIR")
+
+    if [[ ! "$real_path" = "$real_instances"/* ]]; then
+        echo -e "${RED}Error: Path is not within instances directory${NC}"
+        echo "Path: $real_path"
+        echo "Expected parent: $real_instances"
+        exit 1
+    fi
+
+    # Path must exist
+    if [ ! -e "$path" ]; then
+        echo -e "${RED}Error: Path does not exist: $path${NC}"
+        exit 1
+    fi
+
+    # Path must be a directory
+    if [ ! -d "$path" ]; then
+        echo -e "${RED}Error: Path is not a directory: $path${NC}"
+        exit 1
+    fi
+}
+
+# Get domain suffix for OrbStack DNS routing
+get_domain_suffix() {
+    echo "${PROJECT_NAME}.local"
+}
+
+cmd_create() {
+    local name="${1:-}"
+    local auto_open=false
+
+    # Check for --open flag
+    if [[ "$name" == "--open" ]] || [[ "${2:-}" == "--open" ]]; then
+        auto_open=true
+        if [[ "$name" == "--open" ]]; then
+            name="${2:-}"
+        fi
+    fi
+
+    if [ -z "$name" ]; then
+        echo -e "${RED}Error: Instance name required${NC}"
+        echo "Usage: claude-instance create [--open] <name>"
+        exit 1
+    fi
+
+    # Sanitize name for Docker compatibility (folder name = instance name)
+    local safe_name=$(sanitize_name "$name")
+    validate_sanitized_name "$name" "$safe_name"
+
+    if [ "$name" != "$safe_name" ]; then
+        echo -e "${YELLOW}Note: Instance name sanitized to '$safe_name' for Docker compatibility${NC}"
+    fi
+
+    local instance_path="$INSTANCES_DIR/$safe_name"
+
+    if [ -d "$instance_path" ]; then
+        echo -e "${RED}Error: Instance '$safe_name' already exists at $instance_path${NC}"
+        exit 1
+    fi
+
+    echo -e "${BLUE}Creating Claude instance '$safe_name'...${NC}"
+
+    # Create instances directory if it doesn't exist
+    mkdir -p "$INSTANCES_DIR"
+
+    # Get the remote URL from the main repository
+    cd "$REPO_ROOT"
+    local remote_url=$(git config --get remote.origin.url 2>/dev/null)
+    local current_branch=$(git branch --show-current 2>/dev/null)
+    cd - > /dev/null
+
+    if [ -z "$remote_url" ]; then
+        echo -e "${RED}Error: Main repository has no remote origin configured${NC}"
+        echo "Cannot create instance without a remote URL"
+        exit 1
+    fi
+
+    # Clone from the remote (not local path) so containers can access it
+    echo -e "${BLUE}Cloning from remote: $remote_url${NC}"
+    git clone "$remote_url" "$instance_path"
+
+    # Check out the same branch as the main repo
+    if [ -n "$current_branch" ] && [ "$current_branch" != "main" ] && [ "$current_branch" != "master" ]; then
+        cd "$instance_path"
+
+        # Check if branch exists on remote
+        if git ls-remote --heads origin "$current_branch" | grep -q "$current_branch"; then
+            echo -e "${BLUE}Checking out branch: $current_branch${NC}"
+            git checkout "$current_branch" 2>/dev/null || echo -e "${YELLOW}Note: Could not checkout branch '$current_branch', using default${NC}"
+        else
+            echo -e "${YELLOW}Note: Branch '$current_branch' does not exist on remote, using default branch${NC}"
+        fi
+
+        cd - > /dev/null
+    fi
+
+    # Copy .env files from main repo to new instance
+    echo -e "${BLUE}Copying .env files...${NC}"
+    local env_files_copied=0
+    for env_file in "$REPO_ROOT"/.env*; do
+        if [ -f "$env_file" ]; then
+            local filename=$(basename "$env_file")
+            cp "$env_file" "$instance_path/$filename"
+            echo -e "${GREEN}  ✓ Copied $filename${NC}"
+            env_files_copied=$((env_files_copied + 1))
+        fi
+    done
+
+    if [ $env_files_copied -eq 0 ]; then
+        echo -e "${YELLOW}  No .env files found to copy${NC}"
+    fi
+
+    # Create metadata file
+    check_jq
+    create_metadata "$instance_path" ""
+
+    echo -e "${GREEN}✅ Instance '$safe_name' created successfully!${NC}"
+    echo ""
+    echo "Location: $instance_path"
+    echo ""
+
+    # Show domain routing information (OrbStack DNS)
+    echo "Instance domain: http://${safe_name}.$(get_domain_suffix)"
+    echo ""
+
+    if [ "$auto_open" = true ]; then
+        check_devcontainer_cli
+        echo -e "${BLUE}Opening in dev container...${NC}"
+        devcontainer open "$instance_path"
+    else
+        echo "Next steps:"
+        echo "  1. Open in dev container: claude-instance open $safe_name"
+        echo "  2. Or manually: devcontainer open $instance_path"
+    fi
+}
+
+cmd_show() {
+    local name="${1:-}"
+
+    if [ -z "$name" ]; then
+        echo -e "${RED}Error: Instance name required${NC}"
+        echo "Usage: claude-instance show <name>"
+        echo ""
+        echo "To list all instances, use: claude-instance list"
+        exit 1
+    fi
+
+    if [ ! -d "$INSTANCES_DIR" ]; then
+        echo -e "${YELLOW}No instances directory found${NC}"
+        echo "Create your first instance with: claude-instance create <name>"
+        return
+    fi
+
+    check_jq
+
+    local instance_path="$INSTANCES_DIR/$name"
+    if [ ! -d "$instance_path" ]; then
+        echo -e "${RED}Error: Instance '$name' not found${NC}"
+        exit 1
+    fi
+
+    show_instance_status "$instance_path" "$name" "detailed"
+}
+
+show_instance_status() {
+    local instance_path="$1"
+    local name="$2"
+    local mode="${3:-summary}"  # summary or detailed
+
+    # Execute in subshell to suppress stderr
+    (
+        cd "$instance_path" 2>/dev/null || exit 0
+
+        # Get git information
+        local branch=$(git branch --show-current 2>/dev/null || echo "unknown")
+        local git_state="clean"
+        local git_indicator="${GREEN}✓${NC}"
+
+        # Refresh git index
+        git update-index --refresh -q >/dev/null 2>&1 || true
+
+        # Check for changes
+        local has_changes=false
+        if ! git diff-index --quiet HEAD -- 2>/dev/null || \
+           ! git diff-index --quiet --cached HEAD -- 2>/dev/null || \
+           [ "$(git ls-files --others --exclude-standard 2>/dev/null | wc -l | tr -d ' ')" -gt 0 ]; then
+            has_changes=true
+            git_state="dirty"
+            git_indicator="${YELLOW}●${NC}"
+        fi
+
+        # Check for unpushed commits
+        local has_unpushed=false
+        if git rev-parse --abbrev-ref @{upstream} >/dev/null 2>&1; then
+            local unpushed=$(git rev-list --count @{upstream}..HEAD 2>/dev/null || echo "0")
+            if [ "$unpushed" -gt 0 ]; then
+                has_unpushed=true
+                git_state="unpushed"
+                git_indicator="${CYAN}↑${NC}"
+            fi
+        fi
+
+        # Get metadata
+        local metadata=$(read_metadata "$instance_path")
+        local purpose=$(echo "$metadata" | jq -r '.purpose // ""')
+
+        # Derive status dynamically
+        local status="idle"
+        if [ -n "$purpose" ]; then
+            status="active"
+        fi
+
+        # Check container status via OrbStack label
+        local safe_name=$(sanitize_name "$name")
+        local container_running=false
+        if docker ps --filter "label=dev.orbstack.domains=${safe_name}.$(get_domain_suffix)" --format '{{.Names}}' 2>/dev/null | grep -q .; then
+            container_running=true
+        fi
+
+        # Check env sync (skip for current instance - it's the reference)
+        local env_indicator=""
+        if [[ "$name" != "$CURRENT_INSTANCE" ]]; then
+            local env_status=$(check_env_sync "$instance_path" "$REPO_ROOT")
+            if [[ "$env_status" != "synced" ]]; then
+                env_indicator=" ${YELLOW}⚠${NC}"
+            fi
+        fi
+
+        if [ "$mode" = "summary" ]; then
+            # Summary mode - compact format like list
+            local status_color
+            if [ "$container_running" = true ]; then
+                status_color="$GREEN"
+            else
+                status_color="$GRAY"
+            fi
+
+            # Build status line: [indicator] name (branch) - status - purpose
+            local parts="${git_indicator}${env_indicator} ${GREEN}${name}${NC}"
+            parts="${parts} (${branch})"
+            parts="${parts} - ${status_color}${status}${NC}"
+
+            if [ -n "$purpose" ]; then
+                # Truncate purpose if too long
+                local display_purpose="$purpose"
+                if [ ${#purpose} -gt 50 ]; then
+                    display_purpose=$(echo "$purpose" | cut -c1-47)...
+                fi
+                parts="${parts} - \"${display_purpose}\""
+            fi
+
+            echo -e "  $parts"
+        else
+            # Detailed mode
+            echo -e "${CYAN}Instance: ${GREEN}$name${NC}"
+            echo -e "${GRAY}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+            echo ""
+
+            if [ -n "$purpose" ]; then
+                echo -e "${BLUE}Purpose:${NC} $purpose"
+            else
+                echo -e "${BLUE}Purpose:${NC} ${GRAY}Not set${NC}"
+            fi
+
+            if [ "$container_running" = true ]; then
+                echo -e "${BLUE}Container:${NC} ${GREEN}Running${NC}"
+            else
+                echo -e "${BLUE}Container:${NC} ${GRAY}Stopped${NC}"
+            fi
+
+            echo -e "${BLUE}Domain:${NC} http://${safe_name}.$(get_domain_suffix)"
+            echo -e "${BLUE}Path:${NC} $instance_path"
+            echo ""
+
+            echo -e "${BLUE}Git Status:${NC}"
+            echo -e "  Branch: $branch"
+            echo -e "  State: $(echo -e "$git_indicator") $git_state"
+
+            if [ "$has_changes" = true ]; then
+                echo -e "  ${YELLOW}● Has uncommitted changes${NC}"
+            fi
+
+            if [ "$has_unpushed" = true ]; then
+                echo -e "  ${CYAN}↑ $unpushed unpushed commit(s)${NC}"
+            fi
+
+            echo ""
+
+            # Show env sync status (detailed)
+            if [[ "$name" != "$CURRENT_INSTANCE" ]]; then
+                local env_status=$(check_env_sync "$instance_path" "$REPO_ROOT")
+                echo -e "${BLUE}Env Sync:${NC} (vs $CURRENT_INSTANCE)"
+                if [[ "$env_status" == "synced" ]]; then
+                    echo -e "  ${GREEN}✓${NC} .env files match"
+                else
+                    echo -e "  ${YELLOW}⚠${NC} Diverged: $env_status"
+                fi
+                echo ""
+            fi
+
+            local created=$(echo "$metadata" | jq -r '.created // ""')
+            local created_by=$(echo "$metadata" | jq -r '.createdBy // ""')
+            if [ -n "$created" ]; then
+                echo -e "${GRAY}Created: $created by $created_by${NC}"
+            fi
+        fi
+    )
+}
+
+cmd_list() {
+    check_jq
+
+    echo -e "${BLUE}${PROJECT_NAME} Instances${NC} ${GRAY}(ref: $CURRENT_INSTANCE)${NC}"
+    echo ""
+
+    local count=0
+    local repos
+    repos=$(find_project_repos)
+
+    if [[ -z "$repos" ]]; then
+        echo -e "${YELLOW}No ${PROJECT_NAME} instances found in $PARENT_DIR${NC}"
+        echo "Create your first instance with: claude-instance create <name>"
+        return
+    fi
+
+    while IFS= read -r dir; do
+        local name=$(basename "$dir")
+        show_instance_status "$dir" "$name" "summary"
+        count=$((count + 1))
+    done <<< "$repos"
+
+    echo ""
+    echo -e "Total: $count instance(s)"
+    echo ""
+    echo -e "${GRAY}Legend: ${GREEN}✓${NC} clean  ${YELLOW}●${NC} uncommitted  ${CYAN}↑${NC} unpushed  ${YELLOW}⚠${NC} env diverged${NC}"
+    echo -e "${GRAY}Status colors: ${GREEN}green${NC}=running  ${GRAY}gray${NC}=stopped${NC}"
+}
+
+cmd_remove() {
+    local name="${1:-}"
+    local force=false
+
+    # Check for --force flag
+    if [[ "$name" == "--force" ]] || [[ "${2:-}" == "--force" ]]; then
+        force=true
+        if [[ "$name" == "--force" ]]; then
+            name="${2:-}"
+        fi
+    fi
+
+    if [ -z "$name" ]; then
+        echo -e "${RED}Error: Instance name required${NC}"
+        echo "Usage: claude-instance remove [--force] <name>"
+        exit 1
+    fi
+
+    local instance_path="$INSTANCES_DIR/$name"
+
+    if [ ! -d "$instance_path" ]; then
+        echo -e "${RED}Error: Instance '$name' not found${NC}"
+        exit 1
+    fi
+
+    # Safety checks: Look for any unsaved work
+    cd "$instance_path"
+
+    local has_uncommitted=false
+    local has_unpushed=false
+    local has_stash=false
+    local unpushed_branches=()
+    local issues=()
+
+    # Refresh git index to avoid false positives from stale stat cache
+    # This prevents reporting changes when only timestamps changed (e.g., after clone/checkout)
+    git update-index --refresh -q 2>/dev/null || true
+
+    # Check for uncommitted changes (modified files)
+    if ! git diff-index --quiet HEAD -- 2>/dev/null; then
+        has_uncommitted=true
+        issues+=("Modified files not committed")
+    fi
+
+    # Check for staged changes
+    if ! git diff-index --quiet --cached HEAD -- 2>/dev/null; then
+        has_uncommitted=true
+        issues+=("Staged changes not committed")
+    fi
+
+    # Check for untracked files
+    local untracked_count=$(git ls-files --others --exclude-standard 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$untracked_count" -gt 0 ]; then
+        has_uncommitted=true
+        issues+=("$untracked_count untracked file(s)")
+    fi
+
+    # Check ALL branches for unpushed commits
+    while IFS= read -r branch; do
+        branch=$(echo "$branch" | sed 's/^[* ]*//')  # Remove leading * and spaces
+
+        # Check if branch has an upstream
+        if git rev-parse --abbrev-ref "$branch@{upstream}" &>/dev/null; then
+            # Compare local with remote
+            local local_commits=$(git rev-list --count "$branch@{upstream}..$branch" 2>/dev/null || echo "0")
+            if [ "$local_commits" -gt 0 ]; then
+                has_unpushed=true
+                unpushed_branches+=("$branch ($local_commits commit(s))")
+            fi
+        else
+            # Branch has no upstream - check if it has any commits
+            local commit_count=$(git rev-list --count "$branch" 2>/dev/null || echo "0")
+            if [ "$commit_count" -gt 0 ]; then
+                has_unpushed=true
+                unpushed_branches+=("$branch (no remote, $commit_count commit(s))")
+            fi
+        fi
+    done < <(git branch --format='%(refname:short)' 2>/dev/null)
+
+    # Check for stashed changes
+    local stash_count=$(git stash list 2>/dev/null | wc -l | tr -d ' ')
+    if [ "$stash_count" -gt 0 ]; then
+        has_stash=true
+        issues+=("$stash_count stash(es)")
+    fi
+
+    cd - > /dev/null
+
+    # Display warnings if there are unsaved changes
+    if [ "$has_uncommitted" = true ] || [ "$has_unpushed" = true ] || [ "$has_stash" = true ]; then
+        echo -e "${RED}⚠️  WARNING: Instance has unsaved work!${NC}"
+        echo ""
+
+        if [ "$has_uncommitted" = true ]; then
+            echo -e "${YELLOW}Uncommitted/Untracked:${NC}"
+            for issue in "${issues[@]}"; do
+                echo "  • $issue"
+            done
+            echo ""
+        fi
+
+        if [ "$has_unpushed" = true ]; then
+            echo -e "${YELLOW}Unpushed branches:${NC}"
+            for branch_info in "${unpushed_branches[@]}"; do
+                echo "  • $branch_info"
+            done
+            echo ""
+        fi
+
+        if [ "$has_stash" = true ]; then
+            echo -e "${YELLOW}Stashed changes: $stash_count stash(es)${NC}"
+            echo ""
+        fi
+
+        echo "Removing this instance will permanently delete all of the above work."
+        echo ""
+
+        if [ "$force" = false ]; then
+            echo "To remove anyway, use: claude-instance remove --force $name"
+            exit 1
+        else
+            echo -e "${RED}Using --force flag. Work will be lost!${NC}"
+            echo ""
+        fi
+    fi
+
+    echo -e "${YELLOW}Warning: This will permanently delete the instance at:${NC}"
+    echo "  $instance_path"
+    echo ""
+    read -p "Are you sure? (y/N) " -n 1 -r
+    echo
+
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo "Cancelled"
+        exit 0
+    fi
+
+    echo -e "${BLUE}Removing instance '$name'...${NC}"
+    validate_deletion_path "$instance_path"
+    rm -rf "$instance_path"
+    echo -e "${GREEN}✅ Instance '$name' removed${NC}"
+}
+
+cmd_purpose() {
+    local name="${1:-}"
+    local purpose="${2:-}"
+
+    if [ -z "$name" ]; then
+        echo -e "${RED}Error: Instance name required${NC}"
+        echo "Usage: claude-instance purpose <name> [purpose]"
+        echo ""
+        echo "Examples:"
+        echo "  claude-instance purpose agent-1                    # Show current purpose"
+        echo "  claude-instance purpose agent-1 \"JWT Authentication\"  # Set purpose"
+        exit 1
+    fi
+
+    local instance_path="$INSTANCES_DIR/$name"
+
+    if [ ! -d "$instance_path" ]; then
+        echo -e "${RED}Error: Instance '$name' not found${NC}"
+        exit 1
+    fi
+
+    check_jq
+
+    if [ -z "$purpose" ]; then
+        # Show current purpose
+        local metadata=$(read_metadata "$instance_path")
+        local current_purpose=$(echo "$metadata" | jq -r '.purpose // ""')
+        if [ -n "$current_purpose" ]; then
+            echo -e "${BLUE}Purpose:${NC} $current_purpose"
+        else
+            echo -e "${BLUE}Purpose:${NC} ${GRAY}Not set${NC}"
+        fi
+    else
+        # Set purpose
+        update_purpose "$instance_path" "$purpose"
+        echo -e "${GREEN}✓${NC} Purpose for ${GREEN}$name${NC}: $purpose"
+    fi
+}
+
+# Local commands for use inside devcontainer
+# These operate on the current workspace without needing instance names
+
+cmd_prompt_local() {
+    local workspace=$(get_local_workspace)
+    local metadata_path="$workspace/$METADATA_FILE"
+
+    check_jq
+
+    # Show current purpose
+    local current_purpose=""
+    if [ -f "$metadata_path" ]; then
+        current_purpose=$(jq -r '.purpose // ""' "$metadata_path" 2>/dev/null)
+    fi
+
+    if [ -n "$current_purpose" ]; then
+        echo -e "${BLUE}Current purpose:${NC} $current_purpose"
+    else
+        echo -e "${BLUE}Current purpose:${NC} ${GRAY}Not set${NC}"
+    fi
+    echo ""
+
+    # Prompt for new purpose
+    echo -e "${CYAN}Enter new purpose (or press Enter to keep current):${NC}"
+    read -r new_purpose
+
+    if [ -z "$new_purpose" ]; then
+        echo -e "${GRAY}No change${NC}"
+        return 0
+    fi
+
+    # Update purpose using existing logic
+    cmd_purpose_local "$new_purpose"
+}
+
+cmd_purpose_local() {
+    local purpose="${1:-}"
+    local workspace=$(get_local_workspace)
+    local metadata_path="$workspace/$METADATA_FILE"
+
+    check_jq
+
+    if [ -z "$purpose" ]; then
+        # Show current purpose
+        if [ -f "$metadata_path" ]; then
+            local current_purpose=$(jq -r '.purpose // ""' "$metadata_path" 2>/dev/null)
+            if [ -n "$current_purpose" ]; then
+                echo -e "${BLUE}Purpose:${NC} $current_purpose"
+            else
+                echo -e "${BLUE}Purpose:${NC} ${GRAY}Not set${NC}"
+            fi
+        else
+            echo -e "${BLUE}Purpose:${NC} ${GRAY}Not set (no metadata file)${NC}"
+        fi
+    else
+        # Set purpose
+        if [ -f "$metadata_path" ]; then
+            local temp_file=$(mktemp)
+            trap 'rm -f "$temp_file"' EXIT
+            if jq --arg purpose "$purpose" '.purpose = $purpose' \
+                "$metadata_path" > "$temp_file"; then
+                mv "$temp_file" "$metadata_path"
+                trap - EXIT
+            fi
+        else
+            # Create new metadata file
+            local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+            local username=$(whoami)
+            jq -n \
+                --arg created "$timestamp" \
+                --arg createdBy "$username" \
+                --arg purpose "$purpose" \
+                '{created: $created, createdBy: $createdBy, purpose: $purpose}' \
+                > "$metadata_path"
+        fi
+        # Regenerate status bar to reflect new purpose
+        regenerate_status_bar "$workspace"
+        echo -e "${GREEN}✓${NC} Purpose: $purpose"
+    fi
+}
+
+cmd_show_local() {
+    local workspace=$(get_local_workspace)
+    local metadata_path="$workspace/$METADATA_FILE"
+    local instance_name="${CLAUDE_INSTANCE:-unknown}"
+
+    check_jq
+
+    echo -e "${CYAN}Instance: ${GREEN}$instance_name${NC} (local)"
+    echo -e "${GRAY}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+
+    # Purpose
+    if [ -f "$metadata_path" ]; then
+        local purpose=$(jq -r '.purpose // ""' "$metadata_path" 2>/dev/null)
+        if [ -n "$purpose" ]; then
+            echo -e "${BLUE}Purpose:${NC} $purpose"
+        else
+            echo -e "${BLUE}Purpose:${NC} ${GRAY}Not set${NC}"
+        fi
+    else
+        echo -e "${BLUE}Purpose:${NC} ${GRAY}Not set${NC}"
+    fi
+
+    echo -e "${BLUE}Container:${NC} ${GREEN}Running${NC} (you're inside it)"
+    echo -e "${BLUE}Path:${NC} $workspace"
+    echo ""
+
+    # Git info
+    cd "$workspace" 2>/dev/null || true
+    local branch=$(git branch --show-current 2>/dev/null || echo "unknown")
+    echo -e "${BLUE}Git Status:${NC}"
+    echo -e "  Branch: $branch"
+
+    # Check for changes
+    git update-index --refresh -q >/dev/null 2>&1 || true
+    if ! git diff-index --quiet HEAD -- 2>/dev/null || \
+       ! git diff-index --quiet --cached HEAD -- 2>/dev/null || \
+       [ "$(git ls-files --others --exclude-standard 2>/dev/null | wc -l | tr -d ' ')" -gt 0 ]; then
+        echo -e "  ${YELLOW}● Has uncommitted changes${NC}"
+    else
+        echo -e "  ${GREEN}✓ Clean${NC}"
+    fi
+
+    # Check for unpushed
+    if git rev-parse --abbrev-ref @{upstream} >/dev/null 2>&1; then
+        local unpushed=$(git rev-list --count @{upstream}..HEAD 2>/dev/null || echo "0")
+        if [ "$unpushed" -gt 0 ]; then
+            echo -e "  ${CYAN}↑ $unpushed unpushed commit(s)${NC}"
+        fi
+    fi
+
+    echo ""
+
+    if [ -f "$metadata_path" ]; then
+        local created=$(jq -r '.created // ""' "$metadata_path" 2>/dev/null)
+        local created_by=$(jq -r '.createdBy // ""' "$metadata_path" 2>/dev/null)
+        if [ -n "$created" ]; then
+            echo -e "${GRAY}Created: $created by $created_by${NC}"
+        fi
+    fi
+}
+
+cmd_regenerate_local() {
+    local workspace=$(get_local_workspace)
+    regenerate_status_bar "$workspace"
+    echo -e "${GREEN}✓${NC} Status bar regenerated"
+}
+
+cmd_help_local() {
+    cat <<EOF
+claude-instance: Instance management (running inside devcontainer: ${CLAUDE_INSTANCE})
+
+Local Commands (no instance name needed):
+  claude-instance prompt               Interactive prompt to set purpose
+  claude-instance purpose [purpose]    Get or set this instance's purpose
+  claude-instance show                 Show this instance's details
+  claude-instance regenerate           Regenerate statusBar.json from template
+
+Examples:
+  claude-instance prompt               # Interactive prompt for new purpose
+  claude-instance purpose              # Show current purpose
+  claude-instance purpose "Bug Triage" # Set purpose (auto-regenerates status bar)
+  claude-instance show                 # Show instance details
+  claude-instance regenerate           # Manually regenerate status bar
+
+Note: Other commands (create, list, remove, open) require running from outside
+the devcontainer, in the main repository.
+EOF
+}
+
+cmd_browse() {
+    local name="${1:-}"
+
+    if [ -z "$name" ]; then
+        echo -e "${RED}Error: Instance name required${NC}"
+        echo "Usage: claude-instance browse <name>"
+        exit 1
+    fi
+
+    if [ ! -d "$INSTANCES_DIR" ]; then
+        echo -e "${RED}Error: Instance '$name' not found${NC}"
+        exit 1
+    fi
+
+    local instance_path="$INSTANCES_DIR/$name"
+    if [ ! -d "$instance_path" ]; then
+        echo -e "${RED}Error: Instance '$name' not found${NC}"
+        exit 1
+    fi
+
+    local safe_name=$(sanitize_name "$name")
+    local url="http://${safe_name}.$(get_domain_suffix)"
+
+    echo -e "${BLUE}Opening $url in browser...${NC}"
+
+    # Open URL in default browser (cross-platform)
+    if command -v open >/dev/null 2>&1; then
+        # macOS
+        open "$url"
+    elif command -v xdg-open >/dev/null 2>&1; then
+        # Linux
+        xdg-open "$url"
+    elif command -v start >/dev/null 2>&1; then
+        # Windows (Git Bash/WSL)
+        start "$url"
+    else
+        echo -e "${YELLOW}Could not detect browser command${NC}"
+        echo "Please open manually: $url"
+        exit 1
+    fi
+}
+
+cmd_open() {
+    local name="${1:-}"
+
+    if [ -z "$name" ]; then
+        echo -e "${RED}Error: Instance name required${NC}"
+        echo "Usage: claude-instance open <name>"
+        exit 1
+    fi
+
+    local instance_path="$INSTANCES_DIR/$name"
+
+    if [ ! -d "$instance_path" ]; then
+        echo -e "${RED}Error: Instance '$name' not found${NC}"
+        exit 1
+    fi
+
+    check_devcontainer_cli
+    echo -e "${BLUE}Opening instance '$name' in dev container...${NC}"
+    devcontainer open "$instance_path"
+}
+
+# Terminal sharing commands
+# These enable remote access to devcontainer terminals via tmux
+
+# Get list of running project devcontainers
+# Returns: container_id:instance_name per line
+get_running_containers() {
+    docker ps --filter "name=${CONTAINER_PREFIX}" --format '{{.ID}}:{{.Names}}' 2>/dev/null | while IFS=: read -r id name; do
+        # Extract instance name by removing the prefix
+        instance="${name#${CONTAINER_PREFIX}}"
+        echo "${id}:${instance}"
+    done
+}
+
+cmd_dashboard() {
+    local subcmd="${1:-attach}"
+
+    # Check for required tools
+    if ! command -v tmux &>/dev/null; then
+        echo -e "${RED}Error: tmux is required but not installed${NC}"
+        echo "Install with: brew install tmux (macOS) or apt install tmux (Linux)"
+        exit 1
+    fi
+
+    if ! command -v docker &>/dev/null; then
+        echo -e "${RED}Error: docker is required but not installed${NC}"
+        exit 1
+    fi
+
+    case "$subcmd" in
+        list)
+            cmd_dashboard_list
+            ;;
+        refresh)
+            cmd_dashboard_refresh
+            ;;
+        attach|"")
+            cmd_dashboard_refresh
+            echo ""
+            echo -e "${BLUE}Attaching to dashboard (Ctrl-b d to detach, Ctrl-b w to select window)...${NC}"
+            tmux attach -t "$DASHBOARD_SESSION"
+            ;;
+        *)
+            echo "Usage: claude-instance dashboard [list|refresh|attach]"
+            echo ""
+            echo "Commands:"
+            echo "  attach   Launch or attach to the dashboard (default)"
+            echo "  refresh  Update windows for current containers"
+            echo "  list     List running devcontainers with tmux status"
+            exit 1
+            ;;
+    esac
+}
+
+cmd_dashboard_list() {
+    echo "Running ${PROJECT_NAME} devcontainers:"
+    echo ""
+
+    local containers
+    containers=$(get_running_containers)
+
+    if [[ -z "$containers" ]]; then
+        echo -e "${YELLOW}  No running ${PROJECT_NAME} devcontainers found${NC}"
+        return 1
+    fi
+
+    while IFS=: read -r container_id instance_name; do
+        # Check if container has a tmux session
+        if docker exec "$container_id" tmux has-session -t "$instance_name" 2>/dev/null; then
+            echo -e "  ${GREEN}✓${NC} $instance_name (tmux session active)"
+        else
+            echo -e "  ${YELLOW}○${NC} $instance_name (no tmux session)"
+        fi
+    done <<< "$containers"
+}
+
+cmd_dashboard_refresh() {
+    local containers
+    containers=$(get_running_containers)
+
+    if [[ -z "$containers" ]]; then
+        echo -e "${YELLOW}No running ${PROJECT_NAME} devcontainers found${NC}"
+        return 1
+    fi
+
+    # Ensure dashboard session exists
+    if ! tmux has-session -t "$DASHBOARD_SESSION" 2>/dev/null; then
+        echo -e "${BLUE}Creating dashboard session...${NC}"
+        tmux new-session -d -s "$DASHBOARD_SESSION" -n "status"
+        # Disable automatic window renaming for clean window names
+        tmux set-option -t "$DASHBOARD_SESSION" automatic-rename off
+        tmux set-option -t "$DASHBOARD_SESSION" allow-rename off
+        # Configure status bar
+        tmux set-option -t "$DASHBOARD_SESSION" status-left-length 30
+        tmux set-option -t "$DASHBOARD_SESSION" status-left "[dashboard] "
+        tmux send-keys -t "$DASHBOARD_SESSION:status" "echo '${PROJECT_NAME} Terminal Dashboard'; echo 'Use Ctrl-b w to select a project window'" Enter
+    fi
+
+    # Get existing windows (excluding status)
+    local existing_windows
+    existing_windows=$(tmux list-windows -t "$DASHBOARD_SESSION" -F '#W' 2>/dev/null | grep -v "^status$" || true)
+
+    # Track which windows we've seen
+    local seen_windows=""
+
+    # Add/update windows for running containers
+    while IFS=: read -r container_id instance_name; do
+        seen_windows="$seen_windows $instance_name"
+
+        # Check if window already exists
+        if echo "$existing_windows" | grep -q "^${instance_name}$"; then
+            echo -e "${GRAY}  Window '$instance_name' exists${NC}"
+        else
+            echo -e "${BLUE}  Creating window for '$instance_name'...${NC}"
+            tmux new-window -t "$DASHBOARD_SESSION" -n "$instance_name" \
+                "docker exec -it ${CONTAINER_PREFIX}${instance_name} tmux new-session -A -s '$instance_name'"
+            echo -e "${GREEN}  ✓ Window '$instance_name' created${NC}"
+        fi
+    done <<< "$containers"
+
+    # Remove windows for containers that no longer exist
+    for window in $existing_windows; do
+        if ! echo "$seen_windows" | grep -q " $window"; then
+            echo -e "${YELLOW}  Removing stale window '$window'...${NC}"
+            tmux kill-window -t "$DASHBOARD_SESSION:$window" 2>/dev/null || true
+        fi
+    done
+
+    echo -e "${GREEN}✓ Dashboard refreshed${NC}"
+}
+
+cmd_menu() {
+    # Interactive menu for selecting and attaching to an instance
+    # Designed for remote access (e.g., Shellfish via SSH)
+
+    if ! command -v docker &>/dev/null; then
+        echo -e "${RED}Error: docker is required but not installed${NC}"
+        exit 1
+    fi
+
+    local containers
+    containers=$(get_running_containers)
+
+    if [[ -z "$containers" ]]; then
+        echo -e "${YELLOW}No running ${PROJECT_NAME} devcontainers found${NC}"
+        echo ""
+        echo "Start a devcontainer first with: claude-instance open <name>"
+        exit 1
+    fi
+
+    # Count instances (sorted naturally/alphabetically)
+    local count=0
+    local instances=()
+    while IFS= read -r instance_name; do
+        instances+=("$instance_name")
+        count=$((count + 1))
+    done < <(echo "$containers" | cut -d: -f2 | sort -V)
+
+    # If only one instance, auto-connect
+    if [[ $count -eq 1 ]]; then
+        local name="${instances[0]}"
+        # Get purpose for display
+        local instance_path="$INSTANCES_DIR/$name"
+        local purpose=""
+        if [[ -d "$instance_path" ]] && command -v jq &>/dev/null; then
+            local metadata_path="$instance_path/$METADATA_FILE"
+            if [[ -f "$metadata_path" ]]; then
+                purpose=$(jq -r '.purpose // ""' "$metadata_path" 2>/dev/null)
+            fi
+        fi
+        if [[ -n "$purpose" ]]; then
+            echo -e "${BLUE}Auto-connecting to $name${NC} - ${GRAY}$purpose${NC}"
+        else
+            echo -e "${BLUE}Auto-connecting to $name (only running instance)...${NC}"
+        fi
+        echo ""
+        cmd_attach "$name"
+        return
+    fi
+
+    # Multiple instances - show menu
+    echo -e "${CYAN}${PROJECT_NAME} Terminal Menu${NC}"
+    echo -e "${GRAY}━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+
+    local i=1
+    for instance in "${instances[@]}"; do
+        # Check if tmux session is active
+        local container_name="${CONTAINER_PREFIX}${instance}"
+        local status_icon="○"  # No session
+        if docker exec "$container_name" tmux has-session -t "$instance" 2>/dev/null; then
+            status_icon="${GREEN}●${NC}"  # Active session
+        fi
+
+        # Get purpose if available
+        local instance_path="$INSTANCES_DIR/$instance"
+        local purpose=""
+        if [[ -d "$instance_path" ]] && command -v jq &>/dev/null; then
+            local metadata_path="$instance_path/$METADATA_FILE"
+            if [[ -f "$metadata_path" ]]; then
+                purpose=$(jq -r '.purpose // ""' "$metadata_path" 2>/dev/null)
+            fi
+        fi
+
+        if [[ -n "$purpose" ]]; then
+            echo -e "  ${GREEN}$i)${NC} $status_icon $instance - ${GRAY}$purpose${NC}"
+        else
+            echo -e "  ${GREEN}$i)${NC} $status_icon $instance"
+        fi
+        i=$((i + 1))
+    done
+
+    echo ""
+    echo -e "  ${GRAY}d)${NC} Dashboard (all instances)"
+    echo -e "  ${GRAY}q)${NC} Quit"
+    echo ""
+
+    # Prompt for selection
+    while true; do
+        echo -n "Select instance [1-$count, d, q]: "
+        read -r selection
+
+        case "$selection" in
+            q|Q)
+                echo "Goodbye!"
+                exit 0
+                ;;
+            d|D)
+                cmd_dashboard
+                return
+                ;;
+            [0-9]*)
+                if [[ "$selection" =~ ^[0-9]+$ ]] && [[ $selection -ge 1 && $selection -le $count ]]; then
+                    local name="${instances[$((selection - 1))]}"
+                    echo ""
+                    cmd_attach "$name"
+                    return
+                else
+                    echo -e "${RED}Invalid selection. Enter 1-$count, d, or q${NC}"
+                fi
+                ;;
+            *)
+                echo -e "${RED}Invalid selection. Enter 1-$count, d, or q${NC}"
+                ;;
+        esac
+    done
+}
+
+cmd_attach() {
+    local name="${1:-}"
+
+    if [ -z "$name" ]; then
+        echo -e "${RED}Error: Instance name required${NC}"
+        echo "Usage: claude-instance attach <name>"
+        echo ""
+        echo "Available instances:"
+        local containers
+        containers=$(get_running_containers)
+        if [[ -z "$containers" ]]; then
+            echo -e "  ${YELLOW}(no running containers)${NC}"
+        else
+            while IFS=: read -r _ instance_name; do
+                echo "  - $instance_name"
+            done <<< "$containers"
+        fi
+        exit 1
+    fi
+
+    local container_name="${CONTAINER_PREFIX}${name}"
+
+    # Check if container exists and is running
+    if ! docker ps --format '{{.Names}}' | grep -q "^${container_name}$"; then
+        echo -e "${RED}Error: Container '$container_name' not found or not running${NC}"
+        echo ""
+        echo "Available instances:"
+        local containers
+        containers=$(get_running_containers)
+        if [[ -z "$containers" ]]; then
+            echo -e "  ${YELLOW}(no running containers)${NC}"
+        else
+            while IFS=: read -r _ instance_name; do
+                echo "  - $instance_name"
+            done <<< "$containers"
+        fi
+        exit 1
+    fi
+
+    # Attach to existing tmux session or create if missing
+    # Uses -A flag: attach if exists, create if not
+    exec docker exec -it "$container_name" tmux new-session -A -s "$name"
+}
+
+cmd_help() {
+    cat <<EOF
+claude-instance: Manage multiple Claude agent instances
+
+Usage:
+  claude-instance create [--open] <name>       Create a new instance
+  claude-instance list                         List all instances with status
+  claude-instance show <name>                  Show detailed info for an instance
+  claude-instance purpose <name> [purpose]     Get or set instance purpose
+  claude-instance browse <name>                Open instance URL in browser
+  claude-instance open <name>                  Open instance in dev container
+  claude-instance remove [--force] <name>      Remove an instance
+
+Terminal Sharing:
+  claude-instance menu                         Interactive instance picker
+  claude-instance dashboard [list|refresh]     Manage terminal dashboard
+  claude-instance attach <name>                Attach to instance terminal
+
+Examples:
+  # Create an instance and set its purpose
+  claude-instance create agent-1
+  claude-instance purpose agent-1 "JWT Authentication"
+
+  # List all instances (shows status, git state, purpose)
+  claude-instance list
+
+  # View detailed info for specific instance
+  claude-instance show agent-1
+
+  # Check current purpose
+  claude-instance purpose agent-1
+
+  # Open instance in browser
+  claude-instance browse agent-1
+
+  # Terminal access (from host or phone via SSH)
+  claude-instance menu                   # Interactive picker (auto-connects if 1 instance)
+  claude-instance dashboard              # View all terminals in tmux
+  claude-instance attach agent-1         # Direct attach to one terminal
+
+Status Indicators:
+  ${GREEN}✓${NC} - Clean git state, no uncommitted changes
+  ${YELLOW}●${NC} - Uncommitted changes (modified/staged/untracked)
+  ${CYAN}↑${NC} - Unpushed commits ready to push
+  ${YELLOW}⚠${NC} - .env files differ from reference instance
+
+Purpose Tracking:
+  - Purpose is a short label (2-5 words) describing the conversation focus
+  - Claude agents automatically update purpose via .claude-metadata.json
+  - Purpose helps identify what each instance is working on at a glance
+  - Examples: "JWT Authentication", "Dashboard Refactor", "Bug Triage"
+
+Terminal Sharing:
+  - Each devcontainer runs a persistent tmux session
+  - Multiple clients can attach: VSCode, host dashboard, phone via SSH
+  - All attached clients see the same output and can send input
+  - Dashboard controls: Ctrl-b w (window picker), Ctrl-b d (detach)
+
+Safety Features:
+  - Remove command performs comprehensive checks before deletion:
+    • Uncommitted changes (modified, staged, or untracked files)
+    • Unpushed commits on ANY branch (not just current branch)
+    • Stashed changes
+  - Use --force flag to override safety checks (use with caution!)
+
+Architecture:
+  - All instances are sibling folders (project repos in the same parent directory)
+  - The instance you run from is the "reference" for .env sync checking
+  - Each instance runs a separate Claude agent in its own dev container
+  - CLAUDE_INSTANCE container env var is set automatically from folder name
+  - Metadata stored in .claude-metadata.json (created, createdBy, purpose)
+
+Env Sync:
+  - .env and .env.local files are compared against the reference instance
+  - ⚠ indicator shows when files differ (use 'show' for details)
+  - Useful for keeping secrets and config in sync across instances
+
+Requirements:
+  - devcontainer CLI: Install with 'npm install -g @devcontainers/cli'
+  - jq: Install with 'brew install jq' (macOS) or equivalent
+  - tmux: Install with 'brew install tmux' (macOS) for terminal sharing
+EOF
+}
+
+# Main command dispatcher
+main() {
+    local cmd="${1:-}"
+
+    # Inside devcontainer: route to local commands
+    if is_inside_devcontainer; then
+        case "$cmd" in
+            prompt)
+                cmd_prompt_local
+                ;;
+            purpose)
+                shift
+                cmd_purpose_local "$@"
+                ;;
+            show|"")
+                cmd_show_local
+                ;;
+            regenerate)
+                cmd_regenerate_local
+                ;;
+            help|--help|-h)
+                cmd_help_local
+                ;;
+            create|list|ls|remove|rm|open|browse|menu|dashboard|attach)
+                echo -e "${YELLOW}Command '$cmd' requires running from outside the devcontainer${NC}"
+                echo ""
+                cmd_help_local
+                exit 1
+                ;;
+            *)
+                echo -e "${RED}Error: Unknown command '$cmd'${NC}"
+                echo ""
+                cmd_help_local
+                exit 1
+                ;;
+        esac
+        return
+    fi
+
+    # Outside devcontainer: normal multi-instance management
+    case "$cmd" in
+        create)
+            shift
+            cmd_create "$@"
+            ;;
+        list|ls)
+            cmd_list
+            ;;
+        show)
+            shift
+            cmd_show "$@"
+            ;;
+        purpose)
+            shift
+            cmd_purpose "$@"
+            ;;
+        browse)
+            shift
+            cmd_browse "$@"
+            ;;
+        remove|rm)
+            shift
+            cmd_remove "$@"
+            ;;
+        open)
+            shift
+            cmd_open "$@"
+            ;;
+        dashboard)
+            shift
+            cmd_dashboard "$@"
+            ;;
+        attach)
+            shift
+            cmd_attach "$@"
+            ;;
+        menu)
+            cmd_menu
+            ;;
+        help|--help|-h|"")
+            cmd_help
+            ;;
+        *)
+            echo -e "${RED}Error: Unknown command '$cmd'${NC}"
+            echo ""
+            cmd_help
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"
