@@ -1490,6 +1490,15 @@ main() {
     fi
 
     # Outside devcontainer: normal multi-instance management
+
+    # Warn if current repo isn't configured for claude-devcontainer
+    if ! is_claude_devcontainer_project "$REPO_ROOT"; then
+        echo -e "${YELLOW}Warning: This repo is not configured for claude-devcontainer${NC}"
+        echo "Run the init script to set it up:"
+        echo "  curl -fsSL https://raw.githubusercontent.com/zookanalytics/claude-devcontainer/main/scripts/init-project.sh | bash"
+        echo ""
+    fi
+
     case "$cmd" in
         create)
             shift
