@@ -1,0 +1,25 @@
+{
+  "name": "@zookanalytics/git-workflow",
+  "version": "0.1.0",
+  "description": "Git workflow skills and enforcement hooks for Claude Code",
+  "files": [
+    "skills/",
+    "commands/",
+    "hooks/",
+    "plugin.json"
+  ],
+  "keywords": [
+    "claude",
+    "claude-code",
+    "git",
+    "workflow",
+    "commits",
+    "pull-requests"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zookanalytics/claude-devcontainer.git",
+    "directory": "packages/git-workflow"
+  }
+}

@@ -93,8 +93,8 @@ RUN mkdir -p /home/node/.claude \
              /home/node/.local/bin
 
 # Copy tmux configuration
-COPY --chown=node:node config/tmux.conf /home/node/.tmux.conf
-COPY --chown=node:node scripts/tmux-session.sh /home/node/.local/bin/tmux-session
+COPY --chown=node:node image/config/tmux.conf /home/node/.tmux.conf
+COPY --chown=node:node image/scripts/tmux-session.sh /home/node/.local/bin/tmux-session
 RUN chmod +x /home/node/.local/bin/tmux-session
 
 # Set default shell and editor
@@ -118,22 +118,22 @@ RUN pnpm setup
 USER root
 
 # Copy configuration files
-COPY config/allowed-domains.txt /etc/allowed-domains.txt
-COPY config/dnsmasq.conf /etc/dnsmasq.conf
-COPY config/ulogd.conf /etc/ulogd.conf
+COPY image/config/allowed-domains.txt /etc/allowed-domains.txt
+COPY image/config/dnsmasq.conf /etc/dnsmasq.conf
+COPY image/config/ulogd.conf /etc/ulogd.conf
 
 # Copy scripts
-COPY scripts/init-firewall.sh /usr/local/bin/
-COPY scripts/start-dnsmasq.sh /usr/local/bin/
-COPY scripts/start-ulogd.sh /usr/local/bin/
-COPY scripts/read-firewall-logs.sh /usr/local/bin/
-COPY scripts/post-create.sh /usr/local/bin/
-COPY scripts/derive-project-name.sh /usr/local/bin/
-COPY scripts/check-daily-updates.sh /usr/local/bin/
-COPY scripts/fix-node-modules-ownership.sh /usr/local/bin/
-COPY scripts/update-packages.sh /usr/local/bin/
-COPY scripts/find-blocked-domain.sh /usr/local/bin/
-COPY scripts/test-firewall-logging.sh /usr/local/bin/
+COPY image/scripts/init-firewall.sh /usr/local/bin/
+COPY image/scripts/start-dnsmasq.sh /usr/local/bin/
+COPY image/scripts/start-ulogd.sh /usr/local/bin/
+COPY image/scripts/read-firewall-logs.sh /usr/local/bin/
+COPY image/scripts/post-create.sh /usr/local/bin/
+COPY image/scripts/derive-project-name.sh /usr/local/bin/
+COPY image/scripts/check-daily-updates.sh /usr/local/bin/
+COPY image/scripts/fix-node-modules-ownership.sh /usr/local/bin/
+COPY image/scripts/update-packages.sh /usr/local/bin/
+COPY image/scripts/find-blocked-domain.sh /usr/local/bin/
+COPY image/scripts/test-firewall-logging.sh /usr/local/bin/
 
 # Make scripts executable and configure sudo
 RUN chmod 755 /usr/local/bin/init-firewall.sh && \
@@ -159,14 +159,15 @@ RUN chmod 755 /usr/local/bin/init-firewall.sh && \
 RUN touch /var/log/dnsmasq.log && chmod 666 /var/log/dnsmasq.log
 RUN touch /var/log/ulogd-firewall.log && chmod 666 /var/log/ulogd-firewall.log
 
-# Copy Claude managed configuration
-COPY claude/ /etc/claude-code/
+# Copy Claude managed configuration (security hooks)
+COPY image/hooks/managed-settings.json /etc/claude-code/managed-settings.json
+COPY image/hooks/ /etc/claude-code/hooks/
 # Ensure proper permissions (readable config, executable hooks)
 RUN chmod 644 /etc/claude-code/managed-settings.json && \
   chmod 755 /etc/claude-code/hooks/*.sh /etc/claude-code/hooks/*.py
 
 # Copy Gemini configuration (hooks are shared with Claude)
-COPY gemini/settings.json /etc/gemini-code/settings.json
+COPY image/gemini/settings.json /etc/gemini-code/settings.json
 RUN mkdir -p /etc/gemini-code/hooks && \
   ln -s /etc/claude-code/hooks/prevent-main-push.sh /etc/gemini-code/hooks/ && \
   ln -s /etc/claude-code/hooks/prevent-admin-flag.sh /etc/gemini-code/hooks/ && \
@@ -175,5 +176,12 @@ RUN mkdir -p /etc/gemini-code/hooks && \
   ln -s /etc/claude-code/hooks/prevent-bash-sensitive-args.py /etc/gemini-code/hooks/ && \
   ln -s /etc/claude-code/hooks/prevent-sensitive-files.py /etc/gemini-code/hooks/ && \
   ln -s /etc/claude-code/hooks/lib /etc/gemini-code/hooks/
+
+# Copy CLI tools from packages (build context must be repo root)
+COPY packages/claude-instance/bin/claude-instance /usr/local/bin/claude-instance
+COPY packages/bmad-orchestrator/scripts/ /usr/local/lib/bmad/
+RUN chmod 755 /usr/local/bin/claude-instance && \
+  ln -s /usr/local/lib/bmad/bmad-cli /usr/local/bin/bmad-cli && \
+  chmod 755 /usr/local/lib/bmad/bmad-cli
 
 USER node

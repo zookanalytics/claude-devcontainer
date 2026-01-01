@@ -1,0 +1,22 @@
+{
+  "name": "bmad-orchestrator",
+  "version": "0.1.0",
+  "description": "BMAD workflow orchestration for AI-driven development - automates phase detection, story progression, and multi-instance coordination",
+  "author": "Signal Loom Team",
+  "homepage": "https://github.com/zookanalytics/claude-devcontainer/tree/main/packages/bmad-orchestrator",
+  "license": "MIT",
+  "keywords": [
+    "bmad",
+    "orchestration",
+    "ai-development",
+    "workflow-automation",
+    "claude-code"
+  ],
+  "engines": {
+    "claude-code": ">=1.0.0"
+  },
+  "hooks": "hooks/hooks.json",
+  "scripts": {
+    "bmad-cli": "scripts/bmad-cli"
+  }
+}

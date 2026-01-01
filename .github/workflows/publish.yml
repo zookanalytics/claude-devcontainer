@@ -6,11 +6,9 @@ on:
   push:
     branches: [main]
     paths:
-      - 'Dockerfile'
-      - 'scripts/**'
-      - 'config/**'
-      - 'claude/**'
-      - 'gemini/**'
+      - 'image/**'
+      - 'packages/claude-instance/**'
+      - 'packages/bmad-orchestrator/**'
   workflow_dispatch:
 
 env:
@@ -56,6 +54,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
+          file: image/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
