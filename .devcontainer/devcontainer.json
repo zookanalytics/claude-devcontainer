@@ -1,0 +1,69 @@
+{
+  "name": "claude-devcontainer - ${localWorkspaceFolderBasename}",
+  "image": "ghcr.io/zookanalytics/claude-devcontainer:latest",
+  "runArgs": [
+    "--name=claude-devcontainer-${localWorkspaceFolderBasename}",
+    "--cap-add=NET_ADMIN",
+    "--cap-add=NET_RAW",
+    "--cap-add=SYSLOG"
+  ],
+  "customizations": {
+    "vscode": {
+      // vscode settings applicable explicitly to dev containers. Common logic in settings.json
+      "settings": {
+        // Window title shows instance name for easy identification when switching windows
+        "window.title": "claude-devcontainer - ${containerEnv:CLAUDE_INSTANCE}${separator}${activeRepositoryBranchName}${dirty}",
+        // Terminal profiles: zsh default for normal use, tmux for persistent/shared sessions
+        "terminal.integrated.defaultProfile.linux": "zsh",
+        "terminal.integrated.profiles.linux": {
+          "zsh": {
+            "path": "/bin/zsh"
+          },
+          "tmux": {
+            "path": "/home/node/.local/bin/tmux-session"
+          }
+        },
+        "geminicodeassist.agentYoloMode": true
+      },
+      "extensions": [
+        "Anthropic.claude-code",
+        "appulate.filewatcher",
+        "bierner.markdown-mermaid",
+        "bierner.markdown-footnotes",
+        "DavidAnson.vscode-markdownlint",
+        "dbaeumer.vscode-eslint",
+        "eamodio.gitlens",
+        "esbenp.prettier-vscode",
+        "github.vscode-github-actions",
+        "ms-playwright.playwright",
+        "RobertOstermann.better-status-bar",
+        "usernamehw.errorlens",
+        "google.gemini-cli-vscode-ide-companion"
+      ]
+    }
+  },
+  "remoteUser": "node",
+  "mounts": [
+    "source=claude-devcontainer-bashhistory-${localWorkspaceFolderBasename},target=/commandhistory,type=volume",
+    "source=claude-devcontainer-claude-config,target=/home/node/.claude,type=volume",
+    "source=claude-devcontainer-gemini-config,target=/home/node/.gemini,type=volume",
+    "source=claude-devcontainer-shared-config,target=/home/node/.config,type=volume",
+    "source=pnpm-store,target=/workspace/.pnpm-store,type=volume",
+    "source=claude-devcontainer-node-modules-${localWorkspaceFolderBasename},target=/workspace/node_modules,type=volume"
+  ],
+  "containerEnv": {
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "CLAUDE_CODE_VERSION": "latest",
+    "CLAUDE_CONFIG_DIR": "/home/node/.claude",
+    "CLAUDE_INSTANCE": "${localWorkspaceFolderBasename}",
+    "GEMINI_CLI_VERSION": "latest",
+    "NODE_OPTIONS": "--max-old-space-size=4096",
+    "PNPM_HOME": "/pnpm",
+    "PROJECT_NAME": "claude-devcontainer",
+    "npm_config_store_dir": "/workspace/.pnpm-store",
+    "npm_config_virtual_store_dir": ".pnpm-store/container/${localWorkspaceFolderBasename}"
+  },
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
+  "workspaceFolder": "/workspace",
+  "postCreateCommand": "/usr/local/bin/post-create.sh"
+}

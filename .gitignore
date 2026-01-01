@@ -22,3 +22,7 @@ Thumbs.db
 # Python cache (hooks are Python)
 __pycache__/
 *.pyc
+
+# Node files
+node_modules
+.pnpm-store
