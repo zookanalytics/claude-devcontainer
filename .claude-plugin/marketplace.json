@@ -13,6 +13,18 @@
       "description": "Git workflow skills with enforcement hooks for commits, PRs, and code review",
       "version": "0.1.0",
       "source": "./packages/git-workflow"
+    },
+    {
+      "name": "bmad-orchestrator",
+      "description": "BMAD workflow orchestration for AI-driven development",
+      "version": "0.1.0",
+      "source": "./packages/bmad-orchestrator"
+    },
+    {
+      "name": "claude-instance",
+      "description": "Multi-instance management with session purpose tracking",
+      "version": "0.1.0",
+      "source": "./packages/claude-instance"
     }
   ]
 }

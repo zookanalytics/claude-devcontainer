@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # bmad-phase-complete.sh - Stop hook for BMAD phase completion detection
 #
 # Fires when Claude stops responding. Checks if the story status changed

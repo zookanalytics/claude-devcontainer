@@ -14,7 +14,8 @@ import sys
 from pathlib import Path
 
 # Add scripts directory to path for imports
-scripts_dir = Path(__file__).parent
+# Resolve symlinks to find actual location (important when symlinked from /usr/local/bin)
+scripts_dir = Path(__file__).resolve().parent
 sys.path.insert(0, str(scripts_dir))
 
 from bmad.cli import main, UserAbort
