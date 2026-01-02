@@ -1,12 +1,14 @@
 {
   "name": "@zookanalytics/claude-instance",
   "version": "0.1.0",
-  "description": "Multi-instance management for Claude Code sessions",
+  "description": "Multi-instance management for Claude Code with session purpose tracking",
   "bin": {
     "claude-instance": "./bin/claude-instance"
   },
   "files": [
-    "bin/"
+    "bin/",
+    "hooks/",
+    "plugin.json"
   ],
   "keywords": [
     "claude",

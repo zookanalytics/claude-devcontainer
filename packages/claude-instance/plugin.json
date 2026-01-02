@@ -1,0 +1,6 @@
+{
+  "name": "claude-instance",
+  "version": "0.1.0",
+  "description": "Multi-instance management for Claude Code with session purpose tracking",
+  "hooks": "hooks/hooks.json"
+}
