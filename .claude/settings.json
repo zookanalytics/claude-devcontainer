@@ -1,0 +1,26 @@
+{
+  "includeCoAuthoredBy": false,
+  "permissions": {
+    "defaultMode": "bypassPermissions"
+  },
+  "enabledMcpjsonServers": [],
+  "hooks": {},
+  "enabledPlugins": {
+    "superpowers@superpowers-dev": true,
+    "git-workflow@claude-devcontainer": true
+  },
+  "extraKnownMarketplaces": {
+    "superpowers-dev": {
+      "source": {
+        "source": "git",
+        "url": "https://github.com/zookanalytics/superpowers.git"
+      }
+    },
+    "claude-devcontainer": {
+      "source": {
+        "source": "directory",
+        "path": "/workspace"
+      }
+    }
+  }
+}

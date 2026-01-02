@@ -1,0 +1,31 @@
+# Python
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+
+# Node
+**/node_modules/
+
+# Git
+**/.git/
+
+# Tests and docs (not needed in image)
+**/tests/
+**/__tests__/
+**/*.test.*
+**/*.spec.*
+
+# Markdown docs (keep READMEs for reference)
+**/docs/
+**/*.md
+!**/README.md
+
+# Editor and IDE
+**/.vscode/
+**/.idea/
+
+# Build artifacts
+**/dist/
+**/build/
+**/*.egg-info/

@@ -1,0 +1,25 @@
+{
+  "name": "@zookanalytics/claude-instance",
+  "version": "0.1.0",
+  "description": "Multi-instance management for Claude Code with session purpose tracking",
+  "bin": {
+    "claude-instance": "./bin/claude-instance"
+  },
+  "files": [
+    "bin/",
+    "hooks/",
+    "plugin.json"
+  ],
+  "keywords": [
+    "claude",
+    "claude-code",
+    "devcontainer",
+    "multi-instance"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zookanalytics/claude-devcontainer.git",
+    "directory": "packages/claude-instance"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "claude-devcontainer",
+  "private": true,
+  "scripts": {
+    "build:image": "docker build -f image/Dockerfile -t claude-devcontainer .",
+    "test": "pnpm -r test",
+    "lint": "claude plugin validate . && pnpm -r lint",
+    "pre-commit": "pnpm -r --if-present run lint && pnpm -r --if-present run typecheck"
+  },
+  "devDependencies": {}
+}

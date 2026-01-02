@@ -1,0 +1,33 @@
+{
+  "name": "@zookanalytics/bmad-orchestrator",
+  "version": "0.1.0",
+  "description": "BMAD workflow orchestration for AI-driven development",
+  "bin": {
+    "bmad-cli": "./scripts/bmad-cli"
+  },
+  "files": [
+    "scripts/",
+    "hooks/",
+    "plugin.json"
+  ],
+  "keywords": [
+    "claude",
+    "claude-code",
+    "bmad",
+    "workflow",
+    "orchestration"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zookanalytics/claude-devcontainer.git",
+    "directory": "packages/bmad-orchestrator"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "os": [
+    "linux",
+    "darwin"
+  ]
+}
