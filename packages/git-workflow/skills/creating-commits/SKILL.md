@@ -41,6 +41,8 @@ Use before ANY commit - never skip for "simple" changes.
 
 Before running `git add`, check current staging state:
 
+**Never stage files containing secrets** (`.env`, `credentials.json`, `*.pem`, `*_key`, etc.) - warn user if these appear in diff.
+
 **Some files already staged?** User pre-selected - verify staged files form atomic unit.
 
 **No files staged?** After reviewing `git diff`, evaluate what constitutes an atomic unit:
