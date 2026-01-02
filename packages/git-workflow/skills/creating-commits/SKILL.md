@@ -28,14 +28,14 @@ Use before ANY commit - never skip for "simple" changes.
 
 **Create these TodoWrite items as your FIRST action, ALL steps are required:**
 
-1. ☐ Run `pnpm pre-commit` AND Read `docs/commit_specification.md` (PARALLEL)
+1. ☐ Run `pnpm pre-commit` (if available) AND Read `docs/commit_specification.md` (PARALLEL)
 2. ☐ Run `git diff` and analyze staging (see below)
 3. ☐ `git add <files>` (stage atomic unit of related files)
 4. ☐ `git diff --staged` (preview commit)
 5. ☐ Write `.claude/.commit-state.json` (signals workflow completion)
 6. ☐ `git commit -m "type(scope): description"`
 
-**Parallel optimization:** Step 1 runs `pnpm pre-commit` and reads `docs/commit_specification.md` simultaneously since they have no dependencies.
+**Parallel optimization:** Step 1 runs `pnpm pre-commit` (if the script exists) and reads `docs/commit_specification.md` simultaneously since they have no dependencies.
 
 ### Steps 2-3: Staging Analysis
 
