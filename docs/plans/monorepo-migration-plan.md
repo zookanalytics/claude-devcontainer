@@ -16,9 +16,9 @@ Consolidate development infrastructure tools into a monorepo to enable:
 | Component | Location | Description |
 |-----------|----------|-------------|
 | **claude-devcontainer** | `_repos/claude-devcontainer/` | Base Docker image, firewall, security hooks |
-| **claude-instance** | `claude-devcontainer/scripts/claude-instance` | Multi-instance management (~500 lines bash) |
+| **claude-instance** | `your-project/scripts/claude-instance` | Multi-instance management (~500 lines bash) |
 | **bmad-orchestrator** | `_repos/bmad_orchestrator/` | BMAD workflow orchestration (Python CLI + hooks) |
-| **project hooks** | `claude-devcontainer/.claude/hooks/` | Commit enforcement, session focus, etc. |
+| **project hooks** | `your-project/.claude/hooks/` | Commit enforcement, session focus, etc. |
 
 ## Hook Categories
 
@@ -32,7 +32,7 @@ Hooks fall into distinct categories based on their coupling:
 
 **Key insight:** A skill-coupled hook without its skill is useless (or worse, blocks work). These must be distributed as bundles.
 
-### Current Skill-Hook Bundles in claude-devcontainer
+### Current Skill-Hook Bundles (Example Project)
 
 | Skill | Coupled Hook | Purpose |
 |-------|--------------|---------|
@@ -156,7 +156,7 @@ claude-devcontainer/
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  claude-devcontainer (consumer repo)                                     │
+│  your-project (consumer repo)                                    │
 │                                                                  │
 │  .devcontainer/devcontainer.json:                               │
 │    "image": "ghcr.io/zookanalytics/claude-devcontainer:latest"  │
@@ -164,7 +164,7 @@ claude-devcontainer/
 │  On "Rebuild Container":                                         │
 │    → Pulls latest image (includes claude-instance, bmad-cli)    │
 │    → Hooks auto-applied via managed-settings                    │
-│    → No commits needed in claude-devcontainer!                          │
+│    → No commits needed in your project!                         │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -190,7 +190,7 @@ claude-devcontainer/
 ### Phase 2: Migrate claude-instance (standalone tool)
 
 1. Create `packages/claude-instance/` structure
-2. Copy `claude-devcontainer/scripts/claude-instance` to `packages/claude-instance/bin/`
+2. Copy `your-project/scripts/claude-instance` to `packages/claude-instance/bin/`
 3. Create `package.json` with bin entry
 4. Test standalone execution with `npx`
 5. Update Dockerfile to install from packages
@@ -210,7 +210,7 @@ claude-devcontainer/
 ### Phase 3: Create git-workflow package (skill + hook bundle)
 
 1. Create `packages/git-workflow/` structure
-2. Move git-related skills from claude-devcontainer:
+2. Move git-related skills from your project:
    - `.claude/skills/creating-commits/`
    - `.claude/skills/git:commit/`
    - `.claude/skills/git:create-pull-request/`
@@ -265,7 +265,7 @@ packages/bmad-orchestrator/
 3. Test image build locally
 4. Update GitHub Actions for image publishing
 
-### Phase 6: Update claude-devcontainer (consumer)
+### Phase 6: Update Consumer Projects
 
 1. Remove `scripts/claude-instance` (now provided by image)
 2. Remove git-related skills (now from `git-workflow` plugin)
@@ -342,7 +342,7 @@ packages:
 - [ ] All tools installable from single monorepo
 - [ ] Docker image includes all tools in PATH
 - [ ] Updating monorepo automatically updates all consumers on next container rebuild
-- [ ] No tool-related code in claude-devcontainer (only config)
+- [ ] No tool-related code in consumer projects (only config)
 - [ ] CI/CD pipeline builds and publishes all artifacts
 - [ ] Documentation covers consumer setup
 

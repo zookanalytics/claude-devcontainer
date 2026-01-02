@@ -29,7 +29,7 @@ NC='\033[0m' # No Color
 # Metadata file name
 METADATA_FILE=".claude-metadata.json"
 
-# Check if a directory is a Claude DevContainer repo
+# Check if a directory is a Claude devcontainer repo
 # Detects by looking for devcontainer.json with claude-devcontainer pattern
 is_claude_devcontainer_repo() {
     local dir="$1"
@@ -44,7 +44,7 @@ is_claude_devcontainer_repo() {
     return 1
 }
 
-# Find all Claude DevContainer repos in the parent directory (siblings)
+# Find all Claude devcontainer repos in the parent directory (siblings)
 find_claude_devcontainer_repos() {
     local parent="${1:-$PARENT_DIR}"
 
@@ -398,7 +398,7 @@ cmd_create() {
     echo ""
 
     # Show domain routing information (OrbStack DNS)
-    echo "Instance domain: http://${safe_name}.claude-devcontainer.local"
+    echo "Instance domain: http://${safe_name}.claude-dev.local"
     echo ""
 
     if [ "$auto_open" = true ]; then
@@ -491,7 +491,7 @@ show_instance_status() {
         # Check container status via OrbStack label
         local safe_name=$(sanitize_name "$name")
         local container_running=false
-        if docker ps --filter "label=dev.orbstack.domains=${safe_name}.claude-devcontainer.local" --format '{{.Names}}' 2>/dev/null | grep -q .; then
+        if docker ps --filter "label=dev.orbstack.domains=${safe_name}.claude-dev.local" --format '{{.Names}}' 2>/dev/null | grep -q .; then
             container_running=true
         fi
 
@@ -546,7 +546,7 @@ show_instance_status() {
                 echo -e "${BLUE}Container:${NC} ${GRAY}Stopped${NC}"
             fi
 
-            echo -e "${BLUE}Domain:${NC} http://${safe_name}.claude-devcontainer.local"
+            echo -e "${BLUE}Domain:${NC} http://${safe_name}.claude-dev.local"
             echo -e "${BLUE}Path:${NC} $instance_path"
             echo ""
 
@@ -600,7 +600,7 @@ cmd_list() {
         if [[ "$json_mode" == true ]]; then
             echo '{"instances":[]}'
         else
-            echo -e "${YELLOW}No Claude DevContainer instances found in $PARENT_DIR${NC}"
+            echo -e "${YELLOW}No Claude Dev instances found in $PARENT_DIR${NC}"
             echo "Create your first instance with: claude-instance create <name>"
         fi
         return
@@ -617,7 +617,7 @@ cmd_list() {
         echo "$instances_json" | jq '{instances: .}'
     else
         # Human-readable output
-        echo -e "${BLUE}Claude DevContainer Instances${NC} ${GRAY}(ref: $CURRENT_INSTANCE)${NC}"
+        echo -e "${BLUE}Claude Dev Instances${NC} ${GRAY}(ref: $CURRENT_INSTANCE)${NC}"
         echo ""
 
         local count=0
@@ -679,7 +679,7 @@ get_instance_json() {
         local safe_name=$(sanitize_name "$name")
         local container_running=false
         local container_name=""
-        container_name=$(docker ps --filter "label=dev.orbstack.domains=${safe_name}.claude-devcontainer.local" --format '{{.Names}}' 2>/dev/null | head -1)
+        container_name=$(docker ps --filter "label=dev.orbstack.domains=${safe_name}.claude-dev.local" --format '{{.Names}}' 2>/dev/null | head -1)
         if [ -n "$container_name" ]; then
             container_running=true
         fi
@@ -1072,7 +1072,7 @@ cmd_browse() {
     fi
 
     local safe_name=$(sanitize_name "$name")
-    local url="http://${safe_name}.claude-devcontainer.local"
+    local url="http://${safe_name}.claude-dev.local"
 
     echo -e "${BLUE}Opening $url in browser...${NC}"
 
@@ -1117,10 +1117,10 @@ cmd_open() {
 # Terminal sharing commands
 # These enable remote access to devcontainer terminals via tmux
 
-DASHBOARD_SESSION="claude-devcontainer-dashboard"
-CONTAINER_PREFIX="claude-devcontainer-"
+DASHBOARD_SESSION="claude-dev-dashboard"
+CONTAINER_PREFIX="claude-dev-"
 
-# Get list of running Claude DevContainer devcontainers
+# Get list of running Claude devcontainers
 # Returns: container_id:instance_name per line
 get_running_containers() {
     docker ps --filter "name=${CONTAINER_PREFIX}" --format '{{.ID}}:{{.Names}}' 2>/dev/null | while IFS=: read -r id name; do
@@ -1171,14 +1171,14 @@ cmd_dashboard() {
 }
 
 cmd_dashboard_list() {
-    echo "Running Claude DevContainer devcontainers:"
+    echo "Running Claude devcontainers:"
     echo ""
 
     local containers
     containers=$(get_running_containers)
 
     if [[ -z "$containers" ]]; then
-        echo -e "${YELLOW}  No running Claude DevContainer devcontainers found${NC}"
+        echo -e "${YELLOW}  No running Claude devcontainers found${NC}"
         return 1
     fi
 
@@ -1197,7 +1197,7 @@ cmd_dashboard_refresh() {
     containers=$(get_running_containers)
 
     if [[ -z "$containers" ]]; then
-        echo -e "${YELLOW}No running Claude DevContainer devcontainers found${NC}"
+        echo -e "${YELLOW}No running Claude devcontainers found${NC}"
         return 1
     fi
 
@@ -1211,7 +1211,7 @@ cmd_dashboard_refresh() {
         # Configure status bar
         tmux set-option -t "$DASHBOARD_SESSION" status-left-length 30
         tmux set-option -t "$DASHBOARD_SESSION" status-left "[dashboard] "
-        tmux send-keys -t "$DASHBOARD_SESSION:status" "echo 'Claude DevContainer Terminal Dashboard'; echo 'Use Ctrl-b w to select a project window'" Enter
+        tmux send-keys -t "$DASHBOARD_SESSION:status" "echo 'Claude Dev Terminal Dashboard'; echo 'Use Ctrl-b w to select a project window'" Enter
     fi
 
     # Get existing windows (excluding status)
@@ -1260,7 +1260,7 @@ cmd_menu() {
     containers=$(get_running_containers)
 
     if [[ -z "$containers" ]]; then
-        echo -e "${YELLOW}No running Claude DevContainer devcontainers found${NC}"
+        echo -e "${YELLOW}No running Claude devcontainers found${NC}"
         echo ""
         echo "Start a devcontainer first with: claude-instance open <name>"
         exit 1
@@ -1297,7 +1297,7 @@ cmd_menu() {
     fi
 
     # Multiple instances - show menu
-    echo -e "${CYAN}Claude DevContainer Terminal Menu${NC}"
+    echo -e "${CYAN}Claude Dev Terminal Menu${NC}"
     echo -e "${GRAY}━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
 
@@ -1555,7 +1555,7 @@ Safety Features:
   - Use --force flag to override safety checks (use with caution!)
 
 Architecture:
-  - All instances are sibling folders (Claude DevContainer repos in the same parent directory)
+  - All instances are sibling folders (Claude devcontainer repos in the same parent directory)
   - The instance you run from is the "reference" for .env sync checking
   - Each instance runs a separate Claude agent in its own dev container
   - CLAUDE_INSTANCE container env var is set automatically from folder name

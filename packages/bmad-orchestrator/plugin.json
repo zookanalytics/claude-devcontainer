@@ -2,7 +2,7 @@
   "name": "bmad-orchestrator",
   "version": "0.1.0",
   "description": "BMAD workflow orchestration for AI-driven development - automates phase detection, story progression, and multi-instance coordination",
-  "author": "Claude DevContainer Team",
+  "author": "Claude DevContainer Contributors",
   "homepage": "https://github.com/zookanalytics/claude-devcontainer/tree/main/packages/bmad-orchestrator",
   "license": "MIT",
   "keywords": [
