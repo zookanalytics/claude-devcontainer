@@ -65,7 +65,9 @@ EOF
 ```
 
 This signals the pre-commit hook that you followed the workflow.
-Expires in 5 minutes, auto-deletes after commit.
+Expires in 5 minutes, auto-deletes after ANY `git commit` attempt (success or failure).
+
+**If commit fails/is blocked:** Rewrite this file before retrying.
 
 ## Commit Message Format
 
