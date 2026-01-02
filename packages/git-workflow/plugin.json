@@ -2,7 +2,11 @@
   "name": "git-workflow",
   "version": "0.1.0",
   "description": "Git workflow skills with enforcement hooks",
-  "skills": "skills/",
-  "commands": "commands/",
-  "hooks": "hooks/hooks.json"
+  "author": {
+    "name": "Zook Analytics",
+    "url": "https://github.com/zookanalytics"
+  },
+  "skills": "./skills/",
+  "commands": "./commands/",
+  "hooks": "./hooks/hooks.json"
 }

@@ -2,6 +2,9 @@
   "name": "@zookanalytics/git-workflow",
   "version": "0.1.0",
   "description": "Git workflow skills and enforcement hooks for Claude Code",
+  "scripts": {
+    "lint": "claude plugin validate plugin.json"
+  },
   "files": [
     "skills/",
     "commands/",
