@@ -12,21 +12,27 @@ echo "==============================================="
 echo "Starting Claude DevContainer post-create setup..."
 echo "==============================================="
 
-# Step 1: Check for package updates (daily)
+# Step 1: Assemble Claude Code managed settings
 echo ""
-echo "[1/7] Checking for package updates..."
+echo "[1/8] Assembling Claude Code managed settings..."
+sudo /usr/local/bin/assemble-managed-settings.sh
+echo "✓ Managed settings assembled"
+
+# Step 2: Check for package updates (daily)
+echo ""
+echo "[2/8] Checking for package updates..."
 /usr/local/bin/check-daily-updates.sh
 echo "✓ Package update check complete"
 
-# Step 2: Fix node_modules ownership
+# Step 3: Fix node_modules ownership
 echo ""
-echo "[2/7] Fixing node_modules ownership..."
+echo "[3/8] Fixing node_modules ownership..."
 sudo /usr/local/bin/fix-node-modules-ownership.sh
 echo "✓ Node modules ownership fixed"
 
-# Step 3: Install global pnpm packages
+# Step 4: Install global pnpm packages
 echo ""
-echo "[3/7] Installing global pnpm packages..."
+echo "[4/8] Installing global pnpm packages..."
 
 # Configure global pnpm to allow build scripts for native dependencies
 pnpm config set -g --json onlyBuiltDependencies '["@clerk/shared","@tailwindcss/oxide","cbor-extract","esbuild","ffmpeg-static","sharp","node-pty","protobufjs","tree-sitter-bash"]'
@@ -43,26 +49,26 @@ pnpm install -g "@google/gemini-cli@${GEMINI_CLI_VERSION}"
 
 echo "✓ Global packages installed"
 
-# Step 4: Start dnsmasq for DNS logging
+# Step 5: Start dnsmasq for DNS logging
 echo ""
-echo "[4/7] Starting dnsmasq DNS forwarder..."
+echo "[5/8] Starting dnsmasq DNS forwarder..."
 sudo /usr/local/bin/start-dnsmasq.sh
 
-# Step 5: Start ulogd for firewall logging
+# Step 6: Start ulogd for firewall logging
 echo ""
-echo "[5/7] Starting ulogd firewall logger..."
+echo "[6/8] Starting ulogd firewall logger..."
 sudo /usr/local/bin/start-ulogd.sh
 echo "✓ ulogd started"
 
-# Step 6: Initialize firewall
+# Step 7: Initialize firewall
 echo ""
-echo "[6/7] Initializing firewall rules..."
+echo "[7/8] Initializing firewall rules..."
 sudo /usr/local/bin/init-firewall.sh
 echo "✓ Firewall initialized"
 
-# Step 7: Run project-specific post-create if it exists
+# Step 8: Run project-specific post-create if it exists
 echo ""
-echo "[7/7] Running project-specific setup..."
+echo "[8/8] Running project-specific setup..."
 PROJECT_POST_CREATE="/workspace/.devcontainer/post-create-project.sh"
 if [ -f "$PROJECT_POST_CREATE" ]; then
     echo "Running $PROJECT_POST_CREATE..."

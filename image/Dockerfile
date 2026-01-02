@@ -134,6 +134,7 @@ COPY image/scripts/fix-node-modules-ownership.sh /usr/local/bin/
 COPY image/scripts/update-packages.sh /usr/local/bin/
 COPY image/scripts/find-blocked-domain.sh /usr/local/bin/
 COPY image/scripts/test-firewall-logging.sh /usr/local/bin/
+COPY image/scripts/assemble-managed-settings.sh /usr/local/bin/
 
 # Make scripts executable and configure sudo
 RUN chmod 755 /usr/local/bin/init-firewall.sh && \
@@ -147,7 +148,9 @@ RUN chmod 755 /usr/local/bin/init-firewall.sh && \
   chmod 755 /usr/local/bin/update-packages.sh && \
   chmod 755 /usr/local/bin/find-blocked-domain.sh && \
   chmod 755 /usr/local/bin/test-firewall-logging.sh && \
+  chmod 755 /usr/local/bin/assemble-managed-settings.sh && \
   echo "node ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh" > /etc/sudoers.d/node-commands && \
+  echo "node ALL=(root) NOPASSWD: /usr/local/bin/assemble-managed-settings.sh" >> /etc/sudoers.d/node-commands && \
   echo "node ALL=(root) NOPASSWD: /usr/local/bin/fix-node-modules-ownership.sh" >> /etc/sudoers.d/node-commands && \
   echo "node ALL=(root) NOPASSWD: /usr/local/bin/start-dnsmasq.sh" >> /etc/sudoers.d/node-commands && \
   echo "node ALL=(root) NOPASSWD: /usr/local/bin/start-ulogd.sh" >> /etc/sudoers.d/node-commands && \
@@ -160,10 +163,12 @@ RUN touch /var/log/dnsmasq.log && chmod 666 /var/log/dnsmasq.log
 RUN touch /var/log/ulogd-firewall.log && chmod 666 /var/log/ulogd-firewall.log
 
 # Copy Claude managed configuration (security hooks)
-COPY image/hooks/managed-settings.json /etc/claude-code/managed-settings.json
+# Base settings are copied as default; assemble-managed-settings.sh merges optional modules at runtime
+COPY image/hooks/managed-settings.base.json /etc/claude-code/managed-settings.json
 COPY image/hooks/ /etc/claude-code/hooks/
 # Ensure proper permissions (readable config, executable hooks)
 RUN chmod 644 /etc/claude-code/managed-settings.json && \
+  chmod 644 /etc/claude-code/hooks/*.json && \
   chmod 755 /etc/claude-code/hooks/*.sh /etc/claude-code/hooks/*.py
 
 # Copy Gemini configuration (hooks are shared with Claude)
