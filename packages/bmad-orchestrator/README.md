@@ -9,52 +9,72 @@ A Claude Code plugin that automates BMAD (Breakthrough Method for Agile AI-Drive
 - **Multi-Instance Coordination**: Dispatches work to devcontainer instances and tracks progress
 - **Status Dashboard**: Terminal-based view of sprint progress and next actions
 
+## Architecture
+
+bmad-cli has two operating modes with different installation requirements:
+
+| Commands | Runs Where | Purpose |
+|----------|------------|---------|
+| `next`, `restart`, `menu` (dispatch) | **Host only** | Orchestrate work across multiple containers |
+| `run-story`, `run-epic`, `menu` (execute) | **Container only** | Execute workflows inside devcontainer |
+| `status`, `audit` | Either | View status, check health |
+
+The orchestrator commands require Docker access to discover and dispatch to containers. The executor commands require being inside a devcontainer with Claude Code installed.
+
 ## Installation
 
-### As a Claude Code Plugin
+### Host Installation (for orchestration)
 
-Add to your project's `.claude/settings.json`:
+Install globally on your host machine to dispatch work to containers:
+
+```bash
+npm install -g @zookanalytics/bmad-orchestrator
+```
+
+This provides the `bmad-cli` command with orchestration capabilities:
+- `bmad-cli next` - Dispatch next story to an available container
+- `bmad-cli restart <id>` - Resume a stale dispatch
+- `bmad-cli menu` - Interactive orchestration menu
+
+### Container Installation (for execution)
+
+When using the `claude-devcontainer` Docker image, bmad-cli is pre-installed at `/usr/local/bin/bmad-cli`.
+
+To enable the Stop hook for phase detection, add to your `.devcontainer/devcontainer.json`:
+
+```json
+{
+  "image": "ghcr.io/zookanalytics/claude-devcontainer:latest",
+  "containerEnv": {
+    "ENABLE_BMAD_ORCHESTRATOR": "true"
+  }
+}
+```
+
+This enables:
+- `bmad-cli run-story <id>` - Run a story through all phases
+- `bmad-cli run-epic <id>` - Run all stories in an epic
+- Phase completion detection via Stop hook
+
+### As a Claude Code Plugin (alternative)
+
+If not using the devcontainer image, add to your project's `.claude/settings.json`:
 
 ```json
 {
   "enabledPlugins": {
-    "bmad-orchestrator@your-marketplace": true
+    "bmad-orchestrator@claude-devcontainer": true
   },
   "extraKnownMarketplaces": {
-    "your-marketplace": {
+    "claude-devcontainer": {
       "source": {
-        "source": "github",
-        "repo": "yourorg/bmad-orchestrator"
+        "source": "directory",
+        "path": "/path/to/claude-devcontainer"
       }
     }
   }
 }
 ```
-
-### Manual Installation
-
-1. Clone this repository
-2. Add the hook to your project's `.claude/settings.json`:
-
-```json
-{
-  "hooks": {
-    "Stop": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "/path/to/bmad-orchestrator/hooks/scripts/bmad-phase-complete.sh"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-3. Add `scripts/` to your PATH or create a symlink to `scripts/bmad-cli`
 
 ## Usage
 
@@ -64,15 +84,31 @@ Add to your project's `.claude/settings.json`:
 bmad-cli              # Opens interactive menu with smart defaults
 ```
 
-### Commands
+The menu adapts based on environment:
+- **On host**: Shows orchestration options (dispatch, restart, audit)
+- **In container**: Shows execution options (run story, run epic)
+
+### Host Commands (Orchestration)
+
+Run these on your host machine to manage work across containers:
 
 ```bash
+bmad-cli              # Interactive orchestration menu
+bmad-cli next         # Dispatch next story to an available container
+bmad-cli restart ID   # Resume a stale/dead dispatch
+bmad-cli audit        # Check for stale dispatches, optionally fix
 bmad-cli status       # Show sprint status and next action
-bmad-cli next         # Dispatch next work to an instance (host only)
-bmad-cli run-story ID # Run a story to completion (devcontainer only)
-bmad-cli run-epic ID  # Run an epic to completion (devcontainer only)
-bmad-cli audit        # Check for stale dispatches
-bmad-cli restart ID   # Resume a stale dispatch
+```
+
+### Container Commands (Execution)
+
+Run these inside a devcontainer to execute workflows:
+
+```bash
+bmad-cli              # Interactive execution menu
+bmad-cli run-story ID # Run a story through all phases to completion
+bmad-cli run-epic ID  # Run all stories in an epic sequentially
+bmad-cli status       # Show sprint status
 ```
 
 ## How It Works
