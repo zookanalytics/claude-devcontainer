@@ -8,10 +8,18 @@ Usage:
     ./scripts/bmad-cli next            # Show and execute next action
     ./scripts/bmad-cli run-story ID    # Run a story to completion
     ./scripts/bmad-cli run-epic ID     # Run an epic to completion
+
+Requires Python 3.10+ (uses modern type hint syntax).
 """
 
 import sys
 from pathlib import Path
+
+# Check Python version before importing modules that use 3.10+ syntax
+if sys.version_info < (3, 10):
+    print("Error: bmad-cli requires Python 3.10 or later", file=sys.stderr)
+    print(f"Current version: {sys.version}", file=sys.stderr)
+    sys.exit(1)
 
 # Add scripts directory to path for imports
 # Resolve symlinks to find actual location (important when symlinked from /usr/local/bin)

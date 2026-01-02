@@ -38,7 +38,9 @@ if command -v yq &>/dev/null; then
     current_status=$(yq -r ".stories.\"$story_id\" // empty" "$STATUS_FILE" 2>/dev/null)
 else
     # Fallback: grep for the story line
-    current_status=$(grep -E "^\s+\"?${story_id}\"?:" "$STATUS_FILE" 2>/dev/null | head -1 | sed 's/.*:\s*//' | tr -d '"' | tr -d "'" | xargs)
+    # Escape story_id for use in grep pattern (handle regex metacharacters)
+    escaped_id=$(printf '%s\n' "$story_id" | sed 's/[.[\*^$()+?{|]/\\&/g')
+    current_status=$(grep -E "^\s+\"?${escaped_id}\"?:" "$STATUS_FILE" 2>/dev/null | head -1 | sed 's/.*:\s*//' | tr -d '"' | tr -d "'" | xargs)
 fi
 
 [[ -z "$current_status" ]] && exit 0

@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Validate required environment variable
+if [[ -z "${CLAUDE_PROJECT_DIR:-}" ]]; then
+    echo "Error: CLAUDE_PROJECT_DIR environment variable not set" >&2
+    exit 1
+fi
+
 # Remind Claude to maintain the purpose field in .claude-metadata.json
 #
 # This hook runs at SessionStart to provide context about the conversation purpose.

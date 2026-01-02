@@ -11,6 +11,12 @@
 
 set -euo pipefail
 
+# Validate required environment variable
+if [[ -z "${CLAUDE_PROJECT_DIR:-}" ]]; then
+    echo "Error: CLAUDE_PROJECT_DIR environment variable not set" >&2
+    exit 1
+fi
+
 # Read JSON input from stdin
 input=$(cat)
 

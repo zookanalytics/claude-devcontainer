@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .status import Action, load_sprint_status
+from .status import Action, find_sprint_status_file, load_sprint_status
 
 # Signal file path for phase completion detection
 SIGNAL_FILE = ".claude/.bmad-phase-signal.json"
@@ -71,8 +71,11 @@ def _pty_spawn_with_signal(
             if signal_file.exists():
                 try:
                     signal_file.unlink()
-                except OSError:
-                    pass
+                except FileNotFoundError:
+                    pass  # Race condition - file already deleted, this is fine
+                except OSError as e:
+                    # Log permission/filesystem errors but continue
+                    print(f"Warning: Could not delete signal file: {e}", file=sys.stderr)
                 # Signal detected - terminate Claude gracefully
                 os.kill(pid, signal.SIGTERM)
                 was_signaled = True
@@ -191,12 +194,10 @@ def update_story_status(
     Uses simple text manipulation to avoid YAML library dependency.
     """
     project_path = Path(project_path)
-    yaml_path = (
-        project_path / "_bmad-output" / "implementation-artifacts" / "sprint-status.yaml"
-    )
+    yaml_path = find_sprint_status_file(project_path)
 
-    if not yaml_path.exists():
-        raise FileNotFoundError(f"sprint-status.yaml not found: {yaml_path}")
+    if not yaml_path:
+        raise FileNotFoundError(f"sprint-status.yaml not found in {project_path}")
 
     content = yaml_path.read_text()
     lines = content.split("\n")
