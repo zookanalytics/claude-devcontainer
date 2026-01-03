@@ -1,0 +1,10 @@
+# Baseline state - copy to sprint-status.yaml before each test
+epics:
+  - id: E999
+    title: "Test Epic"
+    status: in-progress
+stories:
+  - id: S999
+    title: "Test Story for Orchestration Evaluation"
+    status: ready-for-dev
+    epic: E999
