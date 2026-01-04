@@ -43,7 +43,7 @@ development_status:
   # Epic 1: Project Foundation & Code Quality
   epic-1: in-progress
   1-1-initialize-package-with-typescript-configuration: done
-  1-2-configure-eslint-prettier-and-spell-checking: backlog
+  1-2-configure-eslint-prettier-and-spell-checking: done
   1-3-configure-pre-commit-hooks-and-ci-workflow: backlog
   epic-1-retrospective: optional
 

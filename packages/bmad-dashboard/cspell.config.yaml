@@ -1,0 +1,41 @@
+version: '0.2'
+language: en
+useGitignore: true
+
+ignorePaths:
+  - node_modules
+  - dist
+  - pnpm-lock.yaml
+  - coverage
+
+words:
+  - bmad
+  - devpod
+  - devpods
+  - devcontainer
+  - zookanalytics
+  - orchestrator
+  - tmux
+  - tsx
+  - nocheck
+  - typecheck
+  - esmodule
+  - sourcemap
+  - outdir
+  - rootdir
+  - sonarjs
+  - perfectionist
+  - unicorn
+  - tseslint
+  - eslintrc
+  - prettierrc
+  - editorconfig
+  - markdownlint
+  - cspell
+  - stale
+
+dictionaries:
+  - typescript
+  - node
+  - npm
+  - bash

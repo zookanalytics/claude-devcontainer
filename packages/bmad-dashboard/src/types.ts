@@ -1,2 +1,4 @@
-// Type definitions for bmad-dashboard
-// This file will contain shared TypeScript interfaces and types
+/**
+ * Status of a DevPod instance.
+ */
+export type DevPodStatus = 'idle' | 'running' | 'stale' | 'unknown';

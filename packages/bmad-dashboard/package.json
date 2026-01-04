@@ -1,16 +1,24 @@
 {
-  "name": "@claude-devcontainer/bmad-dashboard",
+  "name": "@zookanalytics/bmad-dashboard",
   "version": "0.1.0",
+  "description": "TUI dashboard for multi-DevPod BMAD orchestration",
   "license": "MIT",
   "type": "module",
-  "description": "TUI dashboard for multi-DevPod BMAD orchestration",
   "bin": {
     "bmad-dashboard": "./bin/bmad-dashboard"
   },
   "scripts": {
-    "type-check": "tsc --noEmit",
     "build": "tsc",
-    "dev": "tsx src/cli.ts"
+    "check": "concurrently --group --timings -c auto --prefix name --kill-others-on-fail 'pnpm:check:*' 'pnpm:type-check'",
+    "check:format": "prettier --cache --check .",
+    "check:lint": "eslint --cache src/ *.config.mjs",
+    "check:markdownlint": "markdownlint-cli2",
+    "check:spellcheck": "cspell --cache --quiet \"src/**/*\" \"*.md\" \"*.config.mjs\"",
+    "dev": "tsx src/cli.ts",
+    "fix": "pnpm format && eslint --fix --cache src/ *.config.mjs",
+    "fix:markdownlint": "markdownlint-cli2 --fix",
+    "format": "prettier --cache --write --log-level warn .",
+    "type-check": "tsc --noEmit"
   },
   "dependencies": {
     "commander": "^14.0.0",
@@ -18,9 +26,24 @@
     "react": "^19.0.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.2",
     "@types/node": "^25.0.3",
     "@types/react": "^19.0.0",
+    "concurrently": "^9.2.1",
+    "cspell": "^9.4.0",
+    "eslint": "^9.39.2",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-perfectionist": "^5.2.0",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-sonarjs": "^3.0.5",
+    "eslint-plugin-unicorn": "^62.0.0",
+    "globals": "^17.0.0",
+    "markdownlint-cli2": "^0.20.0",
+    "prettier": "^3.7.4",
+    "prettier-plugin-packagejson": "^2.5.20",
     "tsx": "^4.0.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "typescript-eslint": "^8.51.0"
   }
 }

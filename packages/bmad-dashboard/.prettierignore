@@ -1,0 +1,9 @@
+# Build outputs
+dist/
+coverage/
+
+# Dependencies
+node_modules/
+
+# Package manager files
+pnpm-lock.yaml
