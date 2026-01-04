@@ -1,0 +1,26 @@
+{
+  "name": "@claude-devcontainer/bmad-dashboard",
+  "version": "0.1.0",
+  "license": "MIT",
+  "type": "module",
+  "description": "TUI dashboard for multi-DevPod BMAD orchestration",
+  "bin": {
+    "bmad-dashboard": "./bin/bmad-dashboard"
+  },
+  "scripts": {
+    "type-check": "tsc --noEmit",
+    "build": "tsc",
+    "dev": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "commander": "^14.0.0",
+    "ink": "^6.0.0",
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.3",
+    "@types/react": "^19.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  }
+}

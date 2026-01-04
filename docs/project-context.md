@@ -136,9 +136,9 @@ pnpm pre-commit
 
 | Technology | Version | Notes |
 |------------|---------|-------|
-| Ink | 5.x | TUI framework (React for CLIs) |
-| Commander | 12.x | CLI argument parsing |
-| React | 18.x | Component framework |
+| Ink | 6.x | TUI framework (React for CLIs) |
+| Commander | 14.x | CLI argument parsing |
+| React | 19.x | Component framework (required by Ink 6) |
 | TypeScript | 5.x | Strict mode required |
 
 ### File Naming Rules
