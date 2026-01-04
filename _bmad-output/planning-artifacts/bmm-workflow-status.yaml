@@ -1,0 +1,44 @@
+# BMM Workflow Status - Claude devcontainer
+# This tracks progress through BMM methodology phases.
+# Implementation phase is tracked separately in sprint-status.yaml
+
+# STATUS DEFINITIONS:
+# ==================
+# Initial Status (before completion):
+#   - required: Must be completed to progress
+#   - optional: Can be completed but not required
+#   - recommended: Strongly suggested but not required
+#   - conditional: Required only if certain conditions met (e.g., if_has_ui)
+#   - skipped: Optional/conditional workflow that was skipped
+#
+# Completion Status:
+#   - {file-path}: File created (e.g., "_bmad-output/planning-artifacts/prd.md")
+
+generated: "2026-01-03"
+project: "Claude devcontainer"
+project_type: "software"
+selected_track: "method"
+field_type: "brownfield"
+workflow_path: "_bmad/bmm/workflows/workflow-status/paths/method-brownfield.yaml"
+
+workflow_status:
+  # Phase 0: Documentation (Brownfield prerequisite)
+  document-project: "docs/index.md"  # Completed 2026-01-03 (exhaustive scan)
+
+  # Phase 1: Analysis (Optional - user selected research)
+  brainstorm-project: skipped
+  research: recommended
+  product-brief: skipped
+
+  # Phase 2: Planning
+  prd: required
+  create-ux-design: conditional
+
+  # Phase 3: Solutioning
+  create-architecture: required
+  create-epics-and-stories: required
+  test-design: optional
+  implementation-readiness: required
+
+  # Phase 4: Implementation
+  sprint-planning: required

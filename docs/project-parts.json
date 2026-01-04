@@ -1,0 +1,128 @@
+{
+  "project_name": "Claude DevContainer",
+  "repository_type": "monorepo",
+  "package_manager": "pnpm",
+  "workspace_config": "pnpm-workspace.yaml",
+  "parts": [
+    {
+      "part_id": "image",
+      "display_name": "Docker Image",
+      "root_path": "/image",
+      "project_type_id": "infra",
+      "description": "Docker container image with security hooks, firewall, and development tooling",
+      "key_files": [
+        "Dockerfile",
+        "config/allowed-domains.txt",
+        "config/dnsmasq.conf",
+        "hooks/managed-settings.base.json"
+      ],
+      "documentation_requirements": {
+        "requires_api_scan": false,
+        "requires_data_models": false,
+        "requires_state_management": false,
+        "requires_ui_components": false,
+        "requires_deployment_config": true,
+        "requires_hardware_docs": false,
+        "requires_asset_inventory": false
+      }
+    },
+    {
+      "part_id": "git-workflow",
+      "display_name": "Git Workflow Plugin",
+      "root_path": "/packages/git-workflow",
+      "project_type_id": "library",
+      "npm_package": "@zookanalytics/git-workflow",
+      "description": "Claude Code plugin for git workflow skills and enforcement hooks",
+      "key_files": [
+        "package.json",
+        "plugin.json",
+        "skills/",
+        "commands/",
+        "hooks/"
+      ],
+      "documentation_requirements": {
+        "requires_api_scan": false,
+        "requires_data_models": false,
+        "requires_state_management": false,
+        "requires_ui_components": false,
+        "requires_deployment_config": false,
+        "requires_hardware_docs": false,
+        "requires_asset_inventory": false
+      }
+    },
+    {
+      "part_id": "claude-instance",
+      "display_name": "Claude Instance Manager",
+      "root_path": "/packages/claude-instance",
+      "project_type_id": "cli",
+      "npm_package": "@zookanalytics/claude-instance",
+      "description": "Multi-instance management for Claude Code with session purpose tracking",
+      "key_files": [
+        "package.json",
+        "plugin.json",
+        "bin/claude-instance",
+        "hooks/"
+      ],
+      "cli_binaries": ["claude-instance"],
+      "documentation_requirements": {
+        "requires_api_scan": false,
+        "requires_data_models": false,
+        "requires_state_management": false,
+        "requires_ui_components": false,
+        "requires_deployment_config": false,
+        "requires_hardware_docs": false,
+        "requires_asset_inventory": false
+      }
+    },
+    {
+      "part_id": "bmad-orchestrator",
+      "display_name": "BMAD Orchestrator",
+      "root_path": "/packages/bmad-orchestrator",
+      "project_type_id": "cli",
+      "npm_package": "@zookanalytics/bmad-orchestrator",
+      "description": "BMAD workflow orchestration for AI-driven development",
+      "key_files": [
+        "package.json",
+        "plugin.json",
+        "scripts/bmad-cli",
+        "hooks/",
+        "docs/"
+      ],
+      "cli_binaries": ["bmad-cli"],
+      "documentation_requirements": {
+        "requires_api_scan": false,
+        "requires_data_models": false,
+        "requires_state_management": false,
+        "requires_ui_components": false,
+        "requires_deployment_config": false,
+        "requires_hardware_docs": false,
+        "requires_asset_inventory": false
+      }
+    }
+  ],
+  "integration_points": [
+    {
+      "from": "image",
+      "to": "claude-instance",
+      "type": "embedded_binary",
+      "details": "Docker image copies bin/claude-instance to /usr/local/bin/"
+    },
+    {
+      "from": "image",
+      "to": "bmad-orchestrator",
+      "type": "embedded_binary",
+      "details": "Docker image copies scripts/bmad-cli to /usr/local/lib/bmad/ and symlinks to /usr/local/bin/"
+    },
+    {
+      "from": "image",
+      "to": "git-workflow",
+      "type": "plugin_installation",
+      "details": "git-workflow plugin can be installed in containers via npm/pnpm"
+    }
+  ],
+  "metadata": {
+    "scan_date": "2026-01-03",
+    "scan_level": "exhaustive",
+    "workflow_version": "1.2.0"
+  }
+}
