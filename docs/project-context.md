@@ -34,7 +34,8 @@ This document provides essential context for AI assistants (Claude, Gemini, etc.
 ├── packages/           # Claude Code plugins
 │   ├── git-workflow/   # Git commands and skills
 │   ├── claude-instance/# Instance management CLI
-│   └── bmad-orchestrator/ # BMAD workflow automation
+│   ├── bmad-orchestrator/ # BMAD workflow automation
+│   └── bmad-dashboard/ # TUI dashboard for DevPod orchestration
 ├── _bmad/              # BMAD framework - DO NOT modify directly
 ├── .devcontainer/      # Container configuration
 ├── .claude/            # Claude Code settings
@@ -58,6 +59,7 @@ This document provides essential context for AI assistants (Claude, Gemini, etc.
 **Scopes:**
 - `ai-tools` - Skills, commands, prompts
 - `devcontainer` - Container, image, security
+- `bmad-dashboard` - TUI dashboard package
 - `ci` - GitHub Actions
 - `deps` - Dependencies
 - `docs` - Documentation
@@ -124,4 +126,102 @@ pnpm pre-commit
 
 ---
 
+## BMAD Dashboard Package
+
+**Location:** `packages/bmad-dashboard/`
+**Type:** CLI + TUI Developer Tool
+**Stack:** Ink (React for CLIs) + Commander + TypeScript
+
+### Technology Versions
+
+| Technology | Version | Notes |
+|------------|---------|-------|
+| Ink | 5.x | TUI framework (React for CLIs) |
+| Commander | 12.x | CLI argument parsing |
+| React | 18.x | Component framework |
+| TypeScript | 5.x | Strict mode required |
+
+### File Naming Rules
+
+| Type | Pattern | Example |
+|------|---------|---------|
+| React Components | PascalCase matching export | `WorkerList.tsx` |
+| Utilities/Lib | lowercase | `discovery.ts` |
+| Test files | `.test.ts` suffix, co-located | `discovery.test.ts` |
+
+### TypeScript Naming Rules
+
+- **NO prefixes** on interfaces: `DevPod`, not `IDevPod`
+- **NO prefixes** on types: `Status`, not `TStatus`
+- **Constants**: `SCREAMING_SNAKE_CASE`
+
+### Component Patterns
+
+```typescript
+// CORRECT: Function declaration, not arrow
+function WorkerList({ devpods }: WorkerListProps) {
+  const [selected, setSelected] = useState(0);
+  return <Box>...</Box>;
+}
+
+// WRONG: Arrow function for top-level components
+const WorkerList: FC<Props> = ({ devpods }) => { ... }
+```
+
+### JSON Output Format
+
+All `--json` CLI output MUST use this wrapper:
+
+```json
+{
+  "version": "1",
+  "devpods": [...],
+  "errors": [...]
+}
+```
+
+### Error Message Format
+
+All user-facing errors MUST include suggestions:
+
+```
+✗ devpod-3: Connection timed out after 5s
+  Suggestion: Check if DevPod is running with `devpod list`
+```
+
+### Status Indicators
+
+| Symbol | Meaning |
+|--------|---------|
+| `✓` | Success/Complete |
+| `●` | In progress/Running |
+| `○` | Pending/Idle |
+| `✗` | Error/Failed |
+| `⚠` | Warning/Needs attention |
+
+### Anti-Patterns to Avoid
+
+| Anti-Pattern | Correct Pattern |
+|--------------|-----------------|
+| `interface IDevPod` | `interface DevPod` |
+| `workerList.tsx` | `WorkerList.tsx` |
+| `__tests__/discovery.test.ts` | `lib/discovery.test.ts` |
+| `Error: something failed` | `✗ context: message\n  Suggestion: ...` |
+| Arrow function components | Function declaration components |
+| Class components | Function components with hooks |
+
+### Error Handling Pattern
+
+Use `Promise.allSettled` for graceful degradation:
+
+```typescript
+const results = await Promise.allSettled(
+  devpods.map(pod => readDevPodState(pod))
+);
+// Both fulfilled and rejected results passed to UI
+```
+
+---
+
 *This file is optimized for AI agent context windows.*
+*Updated: 2026-01-04 with BMAD Dashboard patterns*
