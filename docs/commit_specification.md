@@ -48,27 +48,33 @@ Scopes are **encouraged** for most commit types but **optional** for inherently 
 
 #### Standardized Scopes
 
-| Scope          | Description                                                             | Example                                              |
-| -------------- | ----------------------------------------------------------------------- | ---------------------------------------------------- |
-| `ai-tools`     | Claude Code, Gemini CLI, custom commands, skills, prompts               | `feat(ai-tools): add documentation review skill`     |
-| `app`          | Next.js application code (pages, components, layouts, client code)      | `feat(app): add user dashboard page`                 |
-| `ci`           | GitHub Actions workflows, CI/CD pipelines, automation                   | `feat(ci): add automated issue labeling workflow`    |
-| `deps`         | Package updates, dependency changes, version upgrades                   | `build(deps): upgrade Next.js from 15.5.4 to 16.0.1` |
-| `devcontainer` | Development container configuration, scripts, environment setup         | `feat(devcontainer): add DNS logging`                |
-| `docs`         | Project documentation, guides, specifications                           | `docs: add pull request workflow guidelines`         |
-| `tests`        | Test files, test configuration, test utilities (unit, integration, e2e) | `test(tests): add visual regression tests`           |
+| Scope              | Description                                                             | Example                                                  |
+| ------------------ | ----------------------------------------------------------------------- | -------------------------------------------------------- |
+| `ai-tools`         | Claude Code, Gemini CLI, custom commands, skills, prompts               | `feat(ai-tools): add documentation review skill`         |
+| `bmad-dashboard`   | TUI dashboard package for DevPod orchestration                          | `feat(bmad-dashboard): add worker list component`        |
+| `bmad-orchestrator`| BMAD workflow automation package                                        | `feat(bmad-orchestrator): add task queue`                |
+| `ci`               | GitHub Actions workflows, CI/CD pipelines, automation                   | `feat(ci): add automated issue labeling workflow`        |
+| `claude-instance`  | Instance management CLI package                                         | `fix(claude-instance): handle connection timeout`        |
+| `deps`             | Package updates, dependency changes, version upgrades                   | `build(deps): upgrade typescript to 5.x`                 |
+| `devcontainer`     | Development container configuration, scripts, environment setup         | `feat(devcontainer): add DNS logging`                    |
+| `docs`             | Project documentation, guides, specifications                           | `docs: add pull request workflow guidelines`             |
+| `git-workflow`     | Git commands and skills package                                         | `feat(git-workflow): add branch cleanup command`         |
+| `tests`            | Test files, test configuration, test utilities (unit, integration, e2e) | `test(tests): add visual regression tests`               |
 
 #### Scope Selection Guidelines
 
-| Directory/File Pattern                    | Scope          |
-| ----------------------------------------- | -------------- |
-| `.claude/`, `.gemini/`                    | `ai-tools`     |
-| `src/app/`                                | `app`          |
-| `.github/workflows/`                      | `ci`           |
-| `package.json`, `pnpm-lock.yaml`          | `deps`         |
-| `.devcontainer/`                          | `devcontainer` |
-| `docs/`, `*.md`                           | `docs`         |
-| `**/__tests__/`, `*.test.ts`, `*.spec.ts` | `tests`        |
+| Directory/File Pattern                    | Scope              |
+| ----------------------------------------- | ------------------ |
+| `.claude/`, `.gemini/`                    | `ai-tools`         |
+| `packages/bmad-dashboard/`                | `bmad-dashboard`   |
+| `packages/bmad-orchestrator/`             | `bmad-orchestrator`|
+| `packages/claude-instance/`               | `claude-instance`  |
+| `packages/git-workflow/`                  | `git-workflow`     |
+| `.github/workflows/`                      | `ci`               |
+| `package.json`, `pnpm-lock.yaml`          | `deps`             |
+| `.devcontainer/`                          | `devcontainer`     |
+| `docs/`, `*.md`                           | `docs`             |
+| `**/__tests__/`, `*.test.ts`, `*.spec.ts` | `tests`            |
 
 **When changes span multiple scopes:**
 
@@ -85,7 +91,7 @@ If truly equal, prefer the scope that matches the user-facing impact.
 #### Restrictions
 
 - **Do not** use issue identifiers as scopes (e.g., `feat(#123):` is invalid)
-- **Do not** invent new scopes - use only the 7 standardized scopes above
+- **Do not** invent new scopes - use only the 10 standardized scopes above
 - Scopes **must** be lowercase
 - Scopes **must not** contain spaces
 

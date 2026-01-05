@@ -1,0 +1,55 @@
+name: Code Quality
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, edited, synchronize, reopened, ready_for_review]
+
+jobs:
+  code-quality:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false || github.event_name == 'push'
+    steps:
+      - name: Check PR title
+        if: github.event_name == 'pull_request' && (github.event.action == 'opened' || github.event.action == 'edited')
+        uses: amannn/action-semantic-pull-request@v6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            build
+            chore
+            docs
+            feat
+            fix
+            ops
+            perf
+            refactor
+            revert
+            security
+            style
+            test
+          scopes: |
+            ai-tools
+            bmad-dashboard
+            bmad-orchestrator
+            ci
+            claude-instance
+            deps
+            devcontainer
+            docs
+            git-workflow
+            tests
+          requireScope: false
+          subjectPattern: ^(?![A-Z]).+$
+          subjectPatternError: Subject must start with lowercase letter.
+
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v5
+        with:
+          node-version-file: package.json
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter bmad-dashboard check

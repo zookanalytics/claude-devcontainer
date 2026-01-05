@@ -58,11 +58,14 @@ This document provides essential context for AI assistants (Claude, Gemini, etc.
 
 **Scopes:**
 - `ai-tools` - Skills, commands, prompts
-- `devcontainer` - Container, image, security
 - `bmad-dashboard` - TUI dashboard package
+- `bmad-orchestrator` - BMAD workflow automation
 - `ci` - GitHub Actions
+- `claude-instance` - Instance management CLI
 - `deps` - Dependencies
+- `devcontainer` - Container, image, security
 - `docs` - Documentation
+- `git-workflow` - Git commands and skills
 - `tests` - Test files
 
 ## Package Patterns

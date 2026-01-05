@@ -18,7 +18,28 @@
     "fix": "pnpm format && eslint --fix --cache src/ *.config.mjs",
     "fix:markdownlint": "markdownlint-cli2 --fix",
     "format": "prettier --cache --write --log-level warn .",
+    "pre-commit": "pnpm lint-staged && pnpm type-check",
     "type-check": "tsc --noEmit"
+  },
+  "lint-staged": {
+    "src/**/*.{ts,tsx}": [
+      "eslint --fix --cache",
+      "prettier --write",
+      "cspell --no-must-find-files"
+    ],
+    "*.config.mjs": [
+      "eslint --fix --cache",
+      "prettier --write",
+      "cspell --no-must-find-files"
+    ],
+    "*.md": [
+      "prettier --write",
+      "markdownlint-cli2 --no-globs --fix",
+      "cspell --no-must-find-files"
+    ],
+    "*.{json,yaml,yml}": [
+      "prettier --write"
+    ]
   },
   "dependencies": {
     "commander": "^14.0.0",
@@ -39,6 +60,7 @@
     "eslint-plugin-sonarjs": "^3.0.5",
     "eslint-plugin-unicorn": "^62.0.0",
     "globals": "^17.0.0",
+    "lint-staged": "^16.2.7",
     "markdownlint-cli2": "^0.20.0",
     "prettier": "^3.7.4",
     "prettier-plugin-packagejson": "^2.5.20",
