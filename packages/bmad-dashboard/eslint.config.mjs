@@ -66,8 +66,38 @@ const eslintConfig = [
     },
   },
 
-  // Language options for TypeScript
+  // Language options for TypeScript (non-test files)
   {
+    files: ['src/**/*.ts', 'src/**/*.tsx'],
+    ignores: ['**/*.test.ts', '**/*.test.tsx'],
+    languageOptions: {
+      ecmaVersion: 2025,
+      globals: { ...globals.node },
+      parserOptions: {
+        project: './tsconfig.json',
+        tsconfigRootDir: import.meta.dirname,
+      },
+      sourceType: 'module',
+    },
+  },
+
+  // Language options for test files (use tsconfig.test.json)
+  {
+    files: ['**/*.test.ts', '**/*.test.tsx'],
+    languageOptions: {
+      ecmaVersion: 2025,
+      globals: { ...globals.node },
+      parserOptions: {
+        project: './tsconfig.test.json',
+        tsconfigRootDir: import.meta.dirname,
+      },
+      sourceType: 'module',
+    },
+  },
+
+  // Language options for config files (use default project service)
+  {
+    files: ['*.mjs'],
     languageOptions: {
       ecmaVersion: 2025,
       globals: { ...globals.node },
@@ -125,6 +155,7 @@ const eslintConfig = [
             DevPod: true,
             devpod: true,
             DevPodStatus: true,
+            formatDevPodStatus: true,
           },
         },
       ],

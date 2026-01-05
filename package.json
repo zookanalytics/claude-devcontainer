@@ -1,6 +1,9 @@
 {
   "name": "claude-devcontainer",
   "private": true,
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "build:image": "docker build -f image/Dockerfile -t claude-devcontainer .",
     "commitlint": "commitlint --edit",
