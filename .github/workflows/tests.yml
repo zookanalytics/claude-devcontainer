@@ -72,6 +72,8 @@ jobs:
           ref: ${{ env.BASE_SHA }}
       - uses: pnpm/action-setup@fe02b34f77f8bc703788d5817da081398fad5dd2 # v4
         if: steps.cache-coverage.outputs.cache-hit != 'true'
+        with:
+          version: 10  # Fallback for base commits without packageManager
       - uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4
         if: steps.cache-coverage.outputs.cache-hit != 'true'
         with:
@@ -117,7 +119,7 @@ jobs:
           name: coverage-base
           path: coverage-base/
       - name: Coverage Report
-        uses: davelosert/vitest-coverage-report-action@5b6122eca00c0d049d5b3028a3c1d560ebd3956e # v2
+        uses: davelosert/vitest-coverage-report-action@5b6122e3a819a3be7b27fc961b7faafb3bf00e4d # v2
         with:
           json-summary-path: coverage/coverage-summary.json
           json-final-path: coverage/coverage-final.json
