@@ -1,0 +1,29 @@
+# Partial worker state file - missing optional fields
+# Used to test graceful handling of incomplete data
+
+worker_id: devpod-worker-minimal
+instance_name: claude-dev-minimal
+
+# Minimal assignment - only required fields
+assignment:
+  story_id: 1-1-basic-task
+
+# Basic status only
+status: idle
+
+# Heartbeat with only last_update (other fields optional)
+heartbeat:
+  last_update: '2026-01-04T08:00:00Z'
+
+# Missing optional fields:
+# - assignment.story_title
+# - assignment.epic_id
+# - assignment.assigned_at
+# - status_message
+# - heartbeat.interval_seconds
+# - heartbeat.missed_count
+# - progress (entire section)
+# - session (entire section)
+# - pending_questions
+# - last_error
+# - error_count

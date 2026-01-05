@@ -1,0 +1,42 @@
+# Worker state file for DevPod instance
+# This file tracks the current state of a BMAD worker
+
+worker_id: devpod-worker-1
+instance_name: claude-dev-alpha
+
+# Current assignment
+assignment:
+  story_id: 2-2-feature-beta
+  story_title: Implement feature beta functionality
+  epic_id: epic-2
+  assigned_at: '2026-01-04T10:30:00Z'
+
+# Worker status
+status: working
+status_message: Implementing unit tests for feature beta
+
+# Heartbeat tracking
+heartbeat:
+  last_update: '2026-01-04T14:25:00Z'
+  interval_seconds: 60
+  missed_count: 0
+
+# Progress tracking
+progress:
+  tasks_total: 5
+  tasks_completed: 3
+  current_task: Write integration tests
+  percentage: 60
+
+# Session metadata
+session:
+  started_at: '2026-01-04T10:30:00Z'
+  total_interactions: 47
+  last_user_input: '2026-01-04T14:20:00Z'
+
+# Pending questions (needs-input detection)
+pending_questions: []
+
+# Error state (if any)
+last_error: null
+error_count: 0

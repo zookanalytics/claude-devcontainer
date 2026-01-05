@@ -1,11 +1,21 @@
 {
   "name": "claude-devcontainer",
   "private": true,
+  "packageManager": "pnpm@10.26.2",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "build:image": "docker build -f image/Dockerfile -t claude-devcontainer .",
-    "test": "pnpm -r test",
+    "commitlint": "commitlint --edit",
     "lint": "claude plugin validate . && pnpm -r lint",
-    "pre-commit": "pnpm -r --if-present run lint && pnpm -r --if-present run typecheck"
+    "pre-commit": "pnpm -r --if-present run lint && pnpm -r --if-present run typecheck",
+    "prepare": "husky",
+    "test": "pnpm -r test"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "@commitlint/cli": "^20.3.0",
+    "@commitlint/config-conventional": "^20.3.0",
+    "husky": "^9.1.7"
+  }
 }

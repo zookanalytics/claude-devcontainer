@@ -58,11 +58,14 @@ This document provides essential context for AI assistants (Claude, Gemini, etc.
 
 **Scopes:**
 - `ai-tools` - Skills, commands, prompts
-- `devcontainer` - Container, image, security
 - `bmad-dashboard` - TUI dashboard package
+- `bmad-orchestrator` - BMAD workflow automation
 - `ci` - GitHub Actions
+- `claude-instance` - Instance management CLI
 - `deps` - Dependencies
+- `devcontainer` - Container, image, security
 - `docs` - Documentation
+- `git-workflow` - Git commands and skills
 - `tests` - Test files
 
 ## Package Patterns
@@ -136,9 +139,9 @@ pnpm pre-commit
 
 | Technology | Version | Notes |
 |------------|---------|-------|
-| Ink | 5.x | TUI framework (React for CLIs) |
-| Commander | 12.x | CLI argument parsing |
-| React | 18.x | Component framework |
+| Ink | 6.x | TUI framework (React for CLIs) |
+| Commander | 14.x | CLI argument parsing |
+| React | 19.x | Component framework (required by Ink 6) |
 | TypeScript | 5.x | Strict mode required |
 
 ### File Naming Rules

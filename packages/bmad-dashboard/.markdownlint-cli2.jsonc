@@ -1,0 +1,12 @@
+{
+  "$schema": "https://raw.githubusercontent.com/DavidAnson/markdownlint-cli2/refs/tags/v0.20.0/schema/markdownlint-cli2-config-schema.json",
+  "config": {
+    // Disable line length - Prettier handles this
+    "line-length": false,
+    // Use Prettier-compatible style
+    "extends": "markdownlint/style/prettier"
+  },
+  "globs": ["**/*.md"],
+  "ignores": ["node_modules/**", "dist/**", "coverage/**"],
+  "gitignore": true
+}

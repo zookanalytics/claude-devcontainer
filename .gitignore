@@ -26,3 +26,8 @@ __pycache__/
 # Node files
 node_modules
 .pnpm-store
+
+# Linting caches
+.eslintcache
+.cspellcache
+.prettiercache

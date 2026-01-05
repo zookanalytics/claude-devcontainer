@@ -1,0 +1,42 @@
+# Sprint Status Test Fixture
+# This file represents a valid sprint-status.yaml for testing
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review
+#   - done: Story completed
+
+generated: 2026-01-04
+project: test-project
+project_key: test-dashboard
+tracking_system: file-system
+story_location: /workspace/_test/implementation-artifacts
+
+development_status:
+  # Epic 1: Project Foundation
+  epic-1: done
+  1-1-initialize-project: done
+  1-2-configure-tooling: done
+  epic-1-retrospective: done
+
+  # Epic 2: Core Features
+  epic-2: in-progress
+  2-1-feature-alpha: done
+  2-2-feature-beta: in-progress
+  2-3-feature-gamma: backlog
+  epic-2-retrospective: optional
+
+  # Epic 3: Future Work
+  epic-3: backlog
+  3-1-enhancement-one: backlog
+  3-2-enhancement-two: backlog
+  epic-3-retrospective: optional

@@ -1,0 +1,12 @@
+# Build outputs
+dist/
+coverage/
+
+# Dependencies
+node_modules/
+
+# Package manager files
+pnpm-lock.yaml
+
+# Test fixtures with intentional syntax errors
+src/lib/__fixtures__/malformed.yaml
