@@ -1,0 +1,11 @@
+# Malformed YAML file for error path testing
+# This file contains intentional syntax errors that cause parse failures
+
+worker_id: devpod-worker-broken
+
+# ERROR: Tab character in indentation (YAML requires spaces)
+status: working
+	wrong_indent: this uses a tab
+
+# The tab character above is sufficient to cause a parse error.
+# YAML parsers will fail when encountering this file.
