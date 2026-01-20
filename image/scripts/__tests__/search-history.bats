@@ -11,13 +11,13 @@ setup() {
   export TEMP_ROOT=$(mktemp -d)
   export SHARED_DATA_DIR="$TEMP_ROOT/shared-data"
 
-  mkdir -p "$SHARED_DATA_DIR/history"
+  mkdir -p "$SHARED_DATA_DIR/instance"
 
   # Copy fixtures to temp directory
   FIXTURES_DIR="${BATS_TEST_DIRNAME}/fixtures"
   if [ -d "$FIXTURES_DIR" ]; then
-    cp -r "$FIXTURES_DIR/instance-1" "$SHARED_DATA_DIR/history/"
-    cp -r "$FIXTURES_DIR/instance-2" "$SHARED_DATA_DIR/history/"
+    cp -r "$FIXTURES_DIR/instance-1" "$SHARED_DATA_DIR/instance/"
+    cp -r "$FIXTURES_DIR/instance-2" "$SHARED_DATA_DIR/instance/"
   fi
 
   # Path to script under test
@@ -54,7 +54,7 @@ run_search() {
 
 @test "--list with zero instances shows no instances found" {
   # Remove all instances
-  rm -rf "$SHARED_DATA_DIR/history"/*
+  rm -rf "$SHARED_DATA_DIR/instance"/*
 
   run_search --list
 
@@ -138,7 +138,7 @@ run_search() {
   # Copy malformed fixture
   FIXTURES_DIR="${BATS_TEST_DIRNAME}/fixtures"
   if [ -d "$FIXTURES_DIR/malformed" ]; then
-    cp -r "$FIXTURES_DIR/malformed" "$SHARED_DATA_DIR/history/"
+    cp -r "$FIXTURES_DIR/malformed" "$SHARED_DATA_DIR/instance/"
   fi
 
   # Run with stderr captured
@@ -166,7 +166,7 @@ run_search() {
 # =============================================================================
 @test "pattern search with zero instances shows no instances" {
   # Remove all instances
-  rm -rf "$SHARED_DATA_DIR/history"/*
+  rm -rf "$SHARED_DATA_DIR/instance"/*
 
   run_search "some pattern"
 
@@ -188,13 +188,17 @@ run_search() {
 }
 
 # =============================================================================
-# Test: --gemini shows deprecation notice
+# Test: --gemini shows deprecation notice and continues searching
 # =============================================================================
-@test "--gemini shows deprecation notice" {
-  run_search --gemini "test"
+@test "--gemini shows deprecation notice and continues searching" {
+  run_search --gemini "npm"
 
-  # Should show deprecation message (not fail)
+  # Should show deprecation message
   [[ "$output" == *"deprecated"* ]] || [[ "$output" == *"shared"* ]]
+
+  # Should still perform the search (both zsh and claude by default)
+  [[ "$output" == *"ZSH"* ]]
+  [[ "$output" == *"Claude"* ]]
 }
 
 # =============================================================================
@@ -225,8 +229,8 @@ run_search() {
 # =============================================================================
 @test "handles instance with only zsh history" {
   # Create instance with no claude history
-  mkdir -p "$SHARED_DATA_DIR/history/zsh-only"
-  echo "echo hello" > "$SHARED_DATA_DIR/history/zsh-only/zsh_history"
+  mkdir -p "$SHARED_DATA_DIR/instance/zsh-only"
+  echo "echo hello" > "$SHARED_DATA_DIR/instance/zsh-only/zsh_history"
 
   run_search --list
 

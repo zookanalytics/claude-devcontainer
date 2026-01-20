@@ -101,41 +101,60 @@ run_isolation_script() {
   [ "$status" -eq 0 ]
 
   # Verify directories exist
-  [ -d "$SHARED_DATA_DIR/auth" ]
+  [ -d "$SHARED_DATA_DIR/claude" ]
   [ -d "$SHARED_DATA_DIR/gemini" ]
-  [ -d "$SHARED_DATA_DIR/config" ]
-  [ -d "$SHARED_DATA_DIR/history/test-instance/claude" ]
+  [ -d "$SHARED_DATA_DIR/instance/test-instance/claude" ]
 }
 
 # =============================================================================
-# Test: Symlinks Claude auth when shared auth exists
+# Test: Always creates Claude config symlink (~/.claude.json)
 # =============================================================================
-@test "symlinks Claude auth when shared auth exists" {
-  # Pre-create shared auth
-  mkdir -p "$SHARED_DATA_DIR/auth"
-  echo '{"token": "test"}' > "$SHARED_DATA_DIR/auth/claude.json"
+@test "always creates Claude config symlink" {
+  run_isolation_script "test-instance"
+
+  [ "$status" -eq 0 ]
+
+  # Verify symlink always created
+  [ -L "$HOME/.claude.json" ]
+  [ "$(readlink "$HOME/.claude.json")" = "$SHARED_DATA_DIR/claude/config.json" ]
+
+  # Verify bootstrapped file exists
+  [ -f "$SHARED_DATA_DIR/claude/config.json" ]
+}
+
+# =============================================================================
+# Test: Symlinks credentials when shared credentials exist
+# =============================================================================
+@test "symlinks credentials when shared credentials exist" {
+  # Pre-create shared credentials
+  mkdir -p "$SHARED_DATA_DIR/claude"
+  echo '{"token": "test"}' > "$SHARED_DATA_DIR/claude/credentials.json"
 
   run_isolation_script "test-instance"
 
   [ "$status" -eq 0 ]
 
   # Verify symlink
-  [ -L "$HOME/.claude.json" ]
-  [ "$(readlink "$HOME/.claude.json")" = "$SHARED_DATA_DIR/auth/claude.json" ]
+  [ -L "$HOME/.claude/.credentials.json" ]
+  [ "$(readlink "$HOME/.claude/.credentials.json")" = "$SHARED_DATA_DIR/claude/credentials.json" ]
 }
 
 # =============================================================================
-# Test: Prints reminder when no shared auth (I001)
+# Test: Creates credentials symlink proactively (bootstraps empty file)
 # =============================================================================
-@test "I001: prints reminder when no shared auth" {
+@test "creates credentials symlink proactively and bootstraps empty file" {
   run_isolation_script "test-instance"
 
   [ "$status" -eq 0 ]
-  [[ "$output" == *"I001"* ]]
-  [[ "$output" == *"setup-claude-auth-sharing"* ]]
+  [[ "$output" == *"Bootstrapping empty credentials.json"* ]]
 
-  # Should NOT create symlink for ~/.claude.json
-  [ ! -L "$HOME/.claude.json" ]
+  # Symlink should be created pointing to the bootstrapped file
+  [ -L "$HOME/.claude/.credentials.json" ]
+  [ "$(readlink "$HOME/.claude/.credentials.json")" = "$SHARED_DATA_DIR/claude/credentials.json" ]
+
+  # Bootstrapped file should exist and be valid JSON
+  [ -f "$SHARED_DATA_DIR/claude/credentials.json" ]
+  jq empty "$SHARED_DATA_DIR/claude/credentials.json"
 }
 
 # =============================================================================
@@ -159,19 +178,17 @@ run_isolation_script() {
 
   [ "$status" -eq 0 ]
 
-  # Verify marker and HISTFILE in .zshrc
-  grep -q "\[setup-instance-isolation\]" "$HOME/.zshrc"
-  grep -q "HISTFILE.*test-instance.*zsh_history" "$HOME/.zshrc"
+  # Verify marker and HISTFILE in .zshrc (marker is trailing comment)
+  grep -q "\[setup-instance-isolation:HISTFILE\]" "$HOME/.zshrc"
+  grep -q "^export HISTFILE=.*test-instance.*zsh_history" "$HOME/.zshrc"
 }
 
 # =============================================================================
 # Test: Backs up existing non-symlink ~/.claude.json
 # =============================================================================
 @test "backs up existing non-symlink ~/.claude.json" {
-  # Pre-create shared auth and local auth file
-  mkdir -p "$SHARED_DATA_DIR/auth"
-  echo '{"token": "shared"}' > "$SHARED_DATA_DIR/auth/claude.json"
-  echo '{"token": "local"}' > "$HOME/.claude.json"
+  # Pre-create local MCP config file
+  echo '{"mcpServers": {}}' > "$HOME/.claude.json"
 
   run_isolation_script "test-instance"
 
@@ -188,13 +205,11 @@ run_isolation_script() {
 # Test: Uses timestamped backup when .bak already exists
 # =============================================================================
 @test "uses timestamped backup when .bak already exists" {
-  # Pre-create shared auth and local auth file
-  mkdir -p "$SHARED_DATA_DIR/auth"
-  echo '{"token": "shared"}' > "$SHARED_DATA_DIR/auth/claude.json"
-  echo '{"token": "local"}' > "$HOME/.claude.json"
+  # Pre-create local MCP config file
+  echo '{"mcpServers": {}}' > "$HOME/.claude.json"
 
   # Pre-create a .bak file
-  echo '{"token": "old-backup"}' > "$HOME/.claude.json.bak"
+  echo '{"mcpServers": {"old": {}}}' > "$HOME/.claude.json.bak"
 
   run_isolation_script "test-instance"
 
@@ -206,6 +221,28 @@ run_isolation_script() {
   # Verify a timestamped backup was created
   ls "$HOME/.claude.json.bak."* 2>/dev/null
   [ $? -eq 0 ]
+}
+
+# =============================================================================
+# Test: Does not create .bak for empty directories
+# =============================================================================
+@test "does not create backup for empty directories" {
+  # Pre-create empty .claude and .gemini directories
+  mkdir -p "$HOME/.claude"
+  mkdir -p "$HOME/.gemini"
+
+  run_isolation_script "test-instance"
+
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Removing empty directory"* ]]
+
+  # Verify NO .bak directories were created
+  [ ! -d "$HOME/.claude.bak" ]
+  [ ! -d "$HOME/.gemini.bak" ]
+
+  # Verify symlinks are correctly set up
+  [ -L "$HOME/.claude" ]
+  [ -L "$HOME/.gemini" ]
 }
 
 # =============================================================================
@@ -225,18 +262,18 @@ run_isolation_script() {
 }
 
 # =============================================================================
-# Test: Bootstraps empty claude-settings.json if not exists
+# Test: Bootstraps empty settings.json if not exists
 # =============================================================================
-@test "bootstraps empty claude-settings.json if not exists" {
+@test "bootstraps empty settings.json if not exists" {
   run_isolation_script "test-instance"
 
   [ "$status" -eq 0 ]
 
   # Verify settings file exists
-  [ -f "$SHARED_DATA_DIR/config/claude-settings.json" ]
+  [ -f "$SHARED_DATA_DIR/claude/settings.json" ]
 
   # Verify it's valid JSON
-  jq empty "$SHARED_DATA_DIR/config/claude-settings.json"
+  jq empty "$SHARED_DATA_DIR/claude/settings.json"
   [ $? -eq 0 ]
 
   # Verify symlink in per-instance claude dir
@@ -253,7 +290,7 @@ run_isolation_script() {
 
   # Verify symlink
   [ -L "$HOME/.claude" ]
-  [ "$(readlink "$HOME/.claude")" = "$SHARED_DATA_DIR/history/test-instance/claude" ]
+  [ "$(readlink "$HOME/.claude")" = "$SHARED_DATA_DIR/instance/test-instance/claude" ]
 }
 
 # =============================================================================
@@ -264,9 +301,9 @@ run_isolation_script() {
 
   [ "$status" -eq 0 ]
 
-  # Verify CLAUDE_INSTANCE in .zshrc
-  grep -q "CLAUDE_INSTANCE" "$HOME/.zshrc"
-  grep -q "test-instance" "$HOME/.zshrc"
+  # Verify CLAUDE_INSTANCE export in .zshrc (marker is trailing comment)
+  grep -q "^export CLAUDE_INSTANCE=" "$HOME/.zshrc"
+  grep -q "\[setup-instance-isolation:CLAUDE_INSTANCE\]" "$HOME/.zshrc"
 }
 
 # =============================================================================
@@ -292,11 +329,7 @@ run_isolation_script() {
 # =============================================================================
 @test "rollback restores state on mid-script failure" {
   # Pre-create a local .claude.json that will be backed up
-  echo '{"token": "original"}' > "$HOME/.claude.json"
-
-  # Pre-create shared auth so the script tries to create symlink
-  mkdir -p "$SHARED_DATA_DIR/auth"
-  echo '{"token": "shared"}' > "$SHARED_DATA_DIR/auth/claude.json"
+  echo '{"mcpServers": {}}' > "$HOME/.claude.json"
 
   # Fail after step 5 (after symlinks created, before settings)
   export FAIL_AT_STEP=5
@@ -307,9 +340,14 @@ run_isolation_script() {
   [[ "$output" == *"TEST MODE: Simulating failure"* ]]
   [[ "$output" == *"Rolling back"* ]]
 
-  # After rollback, symlinks should be removed (backup restored)
-  # Note: Due to bash trap behavior, the original file may or may not be fully restored
-  # The key test is that the script attempted rollback
+  # Verify rollback actually cleaned up filesystem state:
+  # 1. Symlinks created before failure should be removed
+  [ ! -L "$HOME/.claude" ] || [ ! -e "$HOME/.claude" ]
+
+  # 2. Backup file should be restored OR still exist for manual recovery
+  [ -f "$HOME/.claude.json.bak" ] || [ -f "$HOME/.claude.json" ]
+
+  # 3. The rollback output should indicate action was taken
   [[ "$output" == *"Restoring"* ]] || [[ "$output" == *"Removing"* ]]
 }
 
@@ -329,13 +367,12 @@ run_isolation_script() {
 }
 
 # =============================================================================
-# Test: Shows success message I002
+# Test: Shows success message on completion
 # =============================================================================
-@test "I002: shows success message on completion" {
+@test "shows success message on completion" {
   run_isolation_script "test-instance"
 
   [ "$status" -eq 0 ]
-  [[ "$output" == *"I002"* ]]
   [[ "$output" == *"Instance isolation complete"* ]]
   [[ "$output" == *"test-instance"* ]]
 }

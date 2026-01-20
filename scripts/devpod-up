@@ -30,15 +30,17 @@ NC='\033[0m'
 
 LOCAL_BUILD=false
 LOCAL_IMAGE="claude-devcontainer:local"
+NO_IDE=false
 
 usage() {
     cat <<EOF
-Usage: devpod-up [--local] <instance-id> [repo] [devpod-options...]
+Usage: devpod-up [options] <instance-id> [repo] [devpod-options...]
 
 Creates a DevPod workspace with proper naming for multi-repo use.
 
 Options:
   --local         Build and use local Docker image instead of remote
+  --no-ide        Start without opening an IDE
 
 Arguments:
   instance-id     Short instance name (e.g., agent-1, dev)
@@ -52,8 +54,8 @@ Examples:
   devpod-up agent-1 https://github.com/user/myrepo
   # Workspace ID: myrepo-agent-1
 
-  devpod-up --local agent-1
-  # Builds local image, creates: main-agent-1
+  devpod-up --local --no-ide agent-1
+  # Builds local image, no IDE, creates: main-agent-1
 
   devpod-up dev /path/to/signal-loom
   # Workspace ID: signal-loom-dev
@@ -71,11 +73,25 @@ if [[ $# -lt 1 ]]; then
     usage
 fi
 
-# Parse --local flag
-if [[ "$1" == "--local" ]]; then
-    LOCAL_BUILD=true
-    shift
-fi
+# Parse flags
+while [[ $# -gt 0 && "$1" == --* ]]; do
+    case "$1" in
+        --local)
+            LOCAL_BUILD=true
+            shift
+            ;;
+        --no-ide)
+            NO_IDE=true
+            shift
+            ;;
+        --help)
+            usage
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
 
 if [[ $# -lt 1 ]]; then
     usage
@@ -97,12 +113,20 @@ if [[ $# -gt 0 && ! "$1" =~ ^- ]]; then
     shift
 fi
 
-# Extract repo name for prefixing
+# Extract repo name for prefixing and detect if remote
+IS_REMOTE=false
 if [[ "$REPO" == "." ]]; then
     REPO_NAME="$(basename "$PWD")"
 elif [[ "$REPO" =~ ^https?:// ]]; then
+    # HTTPS: https://github.com/user/repo.git -> repo
     REPO_NAME="$(basename "$REPO" .git)"
+    IS_REMOTE=true
+elif [[ "$REPO" =~ ^git@ ]]; then
+    # SSH: git@github.com:user/repo.git -> repo
+    REPO_NAME="$(basename "$REPO" .git)"
+    IS_REMOTE=true
 else
+    # Local path
     REPO_NAME="$(basename "$REPO")"
 fi
 
@@ -115,7 +139,7 @@ export DEVPOD_WORKSPACE_ID="$WORKSPACE_ID"
 # Check if DevPod workspace already exists
 if devpod list --output json 2>/dev/null | grep -q "\"id\":\"$WORKSPACE_ID\""; then
     if [[ "$LOCAL_BUILD" == true ]]; then
-        echo -e "${YELLOW}Workspace '$WORKSPACE_ID' exists. Use --recreate to rebuild with local image.${NC}"
+        echo -e "${YELLOW}Workspace '$WORKSPACE_ID' exists. Delete and recreate to use local image.${NC}"
         echo "  devpod delete $WORKSPACE_ID && ./scripts/devpod-up --local $SHORT_ID"
         echo ""
         echo -e "${YELLOW}Starting existing workspace...${NC}"
@@ -123,11 +147,16 @@ if devpod list --output json 2>/dev/null | grep -q "\"id\":\"$WORKSPACE_ID\""; t
         echo -e "${YELLOW}Starting existing workspace: $WORKSPACE_ID${NC}"
     fi
     echo ""
-    exec devpod up "$WORKSPACE_ID" "$@"
+    EXISTING_ARGS=("$WORKSPACE_ID")
+    if [[ "$NO_IDE" == true ]]; then
+        EXISTING_ARGS+=(--ide none)
+    fi
+    exec devpod up "${EXISTING_ARGS[@]}" "$@"
 fi
 
 # Check if Docker container with that name already exists (orphaned from deleted workspace)
-if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx "$WORKSPACE_ID"; then
+# Use -Fx for fixed-string exact-line matching (defense against regex metacharacters)
+if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qFx "$WORKSPACE_ID"; then
     echo -e "${RED}Error: Docker container '$WORKSPACE_ID' exists but no matching DevPod workspace${NC}"
     echo "Remove orphaned container: docker rm $WORKSPACE_ID"
     exit 1
@@ -156,10 +185,29 @@ echo -e "  Workspace: $WORKSPACE_ID (also container name)"
 if [[ "$LOCAL_BUILD" == true ]]; then
     echo -e "  Image:     $LOCAL_IMAGE (local build)"
 fi
+if [[ "$IS_REMOTE" == true ]]; then
+    echo -e "  Source:    remote (using default devcontainer.json)"
+else
+    echo -e "  Config:    .devcontainer/devpod/devcontainer.json"
+fi
 echo ""
 
-if [[ "$LOCAL_BUILD" == true ]]; then
-    exec devpod up "$REPO" --id "$WORKSPACE_ID" --devcontainer-path .devcontainer/devpod/devcontainer.json --devcontainer-image "$LOCAL_IMAGE" "$@"
-else
-    exec devpod up "$REPO" --id "$WORKSPACE_ID" --devcontainer-path .devcontainer/devpod/devcontainer.json "$@"
+# Build the devpod command
+DEVPOD_ARGS=("$REPO" --id "$WORKSPACE_ID")
+
+# Only use devpod-specific config for local repos (remote may not have it)
+if [[ "$IS_REMOTE" == false ]]; then
+    DEVPOD_ARGS+=(--devcontainer-path .devcontainer/devpod/devcontainer.json)
 fi
+
+# Add local image if requested
+if [[ "$LOCAL_BUILD" == true ]]; then
+    DEVPOD_ARGS+=(--devcontainer-image "$LOCAL_IMAGE")
+fi
+
+# Skip IDE if requested
+if [[ "$NO_IDE" == true ]]; then
+    DEVPOD_ARGS+=(--ide none)
+fi
+
+exec devpod up "${DEVPOD_ARGS[@]}" "$@"

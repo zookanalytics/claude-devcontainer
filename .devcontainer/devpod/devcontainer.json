@@ -14,18 +14,21 @@
 
   "remoteUser": "node",
 
-  // Volume strategy (unified shared-data approach):
+  // Volume strategy (organized by program):
   // /shared-data volume layout:
-  //   - auth/claude.json     Claude OAuth token (shared, symlinked to ~/.claude.json)
-  //   - gemini/              Entire Gemini directory (shared, symlinked to ~/.gemini)
-  //   - config/claude-settings.json   Shared Claude preferences
-  //   - history/<instance>/  Per-instance isolation:
-  //       - claude/          Symlink target for ~/.claude (per-instance conversations)
-  //       - zsh_history      Per-instance shell history
+  //   - claude/                   Shared Claude state:
+  //       - config.json           Theme, MCP servers, project state (~/.claude.json)
+  //       - credentials.json      OAuth tokens (~/.claude/.credentials.json)
+  //       - settings.json         User preferences (~/.claude/settings.json)
+  //       - inner-config.json     Account info, auth state (~/.claude/.claude.json)
+  //   - gemini/                   Entire Gemini directory (~/.gemini)
+  //   - instance/<id>/            Per-instance isolation:
+  //       - claude/               History, projects, todos (~/.claude)
+  //       - zsh_history           Shell history
   //
   // Instance isolation is handled at runtime by setup-instance-isolation.sh
   // using DEVPOD_WORKSPACE_ID to create per-instance directories.
-  // Auth sharing requires manual 'setup-claude-auth-sharing' after first auth.
+  // Credentials are auto-shared (bootstrapped as empty JSON on first run).
   "mounts": [
     "source=claude-devcontainer-shared-data,target=/shared-data,type=volume",
     "source=pnpm-store,target=/workspace/.pnpm-store,type=volume"

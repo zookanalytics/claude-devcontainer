@@ -16,7 +16,7 @@
 set -e
 
 SHARED_DATA="${SHARED_DATA_DIR:-/shared-data}"
-HISTORY_DIR="$SHARED_DATA/history"
+INSTANCE_DIR="$SHARED_DATA/instance"
 STALE_DAYS=30
 SKIPPED_LINES=0
 
@@ -42,7 +42,7 @@ usage() {
 # Check if any instances exist
 check_instances_exist() {
   local found=false
-  for dir in "$HISTORY_DIR"/*/; do
+  for dir in "$INSTANCE_DIR"/*/; do
     if [ -d "$dir" ]; then
       found=true
       break
@@ -54,7 +54,7 @@ check_instances_exist() {
 # List all instances with counts and staleness detection
 list_instances() {
   if [ "$(check_instances_exist)" = "false" ]; then
-    echo "No instances found in $HISTORY_DIR/"
+    echo "No instances found in $INSTANCE_DIR/"
     exit 0
   fi
 
@@ -63,7 +63,7 @@ list_instances() {
   printf "  %-30s %8s %8s %s\n" "INSTANCE" "ZSH" "CLAUDE" "STATUS"
   printf "  %-30s %8s %8s %s\n" "--------" "---" "------" "------"
 
-  for dir in "$HISTORY_DIR"/*/; do
+  for dir in "$INSTANCE_DIR"/*/; do
     if [ -d "$dir" ]; then
       instance=$(basename "$dir")
 
@@ -114,19 +114,26 @@ search_zsh() {
 
   local found=false
   if [ -n "$instance_filter" ]; then
-    local hist="$HISTORY_DIR/$instance_filter/zsh_history"
+    local hist="$INSTANCE_DIR/$instance_filter/zsh_history"
     if [ -f "$hist" ]; then
       found=true
-      grep -hFn "$pattern" "$hist" 2>/dev/null | \
-        sed "s/^/[$instance_filter] /" || true
+      # grep returns 1 if no matches, which is normal - only mask that exit code
+      local grep_result
+      grep_result=$(grep -hFn "$pattern" "$hist" 2>/dev/null) || true
+      if [ -n "$grep_result" ]; then
+        echo "$grep_result" | sed "s/^/[$instance_filter] /"
+      fi
     fi
   else
-    for hist in "$HISTORY_DIR"/*/zsh_history; do
+    for hist in "$INSTANCE_DIR"/*/zsh_history; do
       if [ -f "$hist" ]; then
         found=true
         instance=$(basename "$(dirname "$hist")")
-        grep -hFn "$pattern" "$hist" 2>/dev/null | \
-          sed "s/^/[$instance] /" || true
+        local grep_result
+        grep_result=$(grep -hFn "$pattern" "$hist" 2>/dev/null) || true
+        if [ -n "$grep_result" ]; then
+          echo "$grep_result" | sed "s/^/[$instance] /"
+        fi
       fi
     done
   fi
@@ -152,13 +159,13 @@ search_claude() {
   local total_skipped=0
 
   if [ -n "$instance_filter" ]; then
-    local history_file="$HISTORY_DIR/$instance_filter/claude/history.jsonl"
+    local history_file="$INSTANCE_DIR/$instance_filter/claude/history.jsonl"
     if [ -f "$history_file" ]; then
       found=true
       search_jsonl_file "$history_file" "$pattern" "$instance_filter"
     fi
   else
-    for history_file in "$HISTORY_DIR"/*/claude/history.jsonl; do
+    for history_file in "$INSTANCE_DIR"/*/claude/history.jsonl; do
       if [ -f "$history_file" ]; then
         found=true
         instance=$(basename "$(dirname "$(dirname "$history_file")")")
@@ -222,7 +229,7 @@ recent_commands() {
   fi
 
   echo "=== Recent ZSH Commands ==="
-  for hist in "$HISTORY_DIR"/*/zsh_history; do
+  for hist in "$INSTANCE_DIR"/*/zsh_history; do
     if [ -f "$hist" ]; then
       instance=$(basename "$(dirname "$hist")")
       tail -n "$count" "$hist" 2>/dev/null | \
@@ -237,7 +244,7 @@ recent_commands() {
   local temp_file
   temp_file=$(mktemp)
 
-  for history_file in "$HISTORY_DIR"/*/claude/history.jsonl; do
+  for history_file in "$INSTANCE_DIR"/*/claude/history.jsonl; do
     if [ -f "$history_file" ]; then
       instance=$(basename "$(dirname "$(dirname "$history_file")")")
       tail -n "$count" "$history_file" 2>/dev/null | while IFS= read -r line || [ -n "$line" ]; do

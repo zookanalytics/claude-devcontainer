@@ -2,23 +2,25 @@
 # setup-instance-isolation.sh
 # Creates per-instance directories for history while sharing credentials/config
 #
-# Final architecture (from tech-spec):
+# Architecture (organized by program):
 #   /shared-data/
-#   ├── auth/
-#   │   └── claude.json           # Claude OAuth (-> symlink to ~/.claude.json)
+#   ├── claude/                    # SHARED Claude state
+#   │   ├── inner-config.json      # Account, auth, etc (~/.claude/.claude.json)
+#   │   ├── credentials.json       # Credentials (~/.claude/.credentials.json)
+#   │   ├── settings.json          # User preferences (~/.claude/settings.json)
+#   │   └── config.json            # Theme, MCP servers, project state (~/.claude.json)
 #   ├── gemini/                    # SHARED - entire ~/.gemini directory
 #   │   ├── oauth_creds.json
 #   │   ├── google_accounts.json
 #   │   ├── installation_id
 #   │   ├── settings.json
 #   │   └── tmp/
-#   ├── config/
-#   │   └── claude-settings.json   # SHARED Claude preferences
-#   └── history/                   # PER-INSTANCE isolation
+#   └── instance/                  # PER-INSTANCE isolation
 #       └── <instance-id>/
 #           ├── claude/            # -> symlink target for ~/.claude
 #           │   ├── history.jsonl  # Per-instance conversations
-#           │   └── settings.json  # -> symlink to /shared-data/config/claude-settings.json
+#           │   ├── projects/      # Per-instance project state
+#           │   └── todos/         # Per-instance todos
 #           └── zsh_history
 #
 # Error codes:
@@ -27,9 +29,9 @@
 #   E003: DEVPOD_WORKSPACE_ID is not set
 #   E004: DEVPOD_WORKSPACE_ID contains invalid characters
 #   E005: Failed to create directory
-#   E006: Failed to create symlink
-#   E007: Symlink verification failed
-#   E008: Final health check failed
+#   E006: Failed to create symlink (ln -sf failed)
+#   E007: Symlink verification failed (symlink not created or not a symlink)
+#   E008: Final health check failed (symlinks not writable)
 
 # --- Testing support ---
 # FAIL_AT_STEP: If set, script will fail after completing that step (for rollback testing)
@@ -187,10 +189,9 @@ create_dir() {
   echo "  Created: $dir"
 }
 
-create_dir "$SHARED_DATA/auth"
+create_dir "$SHARED_DATA/claude"
 create_dir "$SHARED_DATA/gemini"
-create_dir "$SHARED_DATA/config"
-create_dir "$SHARED_DATA/history/$INSTANCE_ID/claude"
+create_dir "$SHARED_DATA/instance/$INSTANCE_ID/claude"
 
 check_fail_at_step 2
 
@@ -201,6 +202,12 @@ echo "[3] Handling existing files..."
 backup_if_not_symlink() {
   local path="$1"
   if [ -e "$path" ] && [ ! -L "$path" ]; then
+    # Skip backing up empty directories
+    if [ -d "$path" ] && [ -z "$(ls -A "$path" 2>/dev/null)" ]; then
+      echo "  Removing empty directory: $path"
+      rmdir "$path"
+      return
+    fi
     local backup="$path.bak"
     # If .bak exists, use timestamped version
     if [ -e "$backup" ]; then
@@ -220,28 +227,29 @@ backup_if_not_symlink "$HOME/.gemini"
 
 check_fail_at_step 3
 
-# --- Step 4: Handle Claude auth bootstrap ---
+# --- Step 4: Handle Claude config (~/.claude.json) ---
 echo ""
-echo "[4] Setting up Claude authentication..."
+echo "[4] Setting up Claude config (theme, MCP servers, project state)..."
 
-if [ -f "$SHARED_DATA/auth/claude.json" ]; then
-  echo "  Shared auth found, creating symlink..."
-  if ! ln -sf "$SHARED_DATA/auth/claude.json" "$HOME/.claude.json"; then
-    echo "E006: ERROR: Failed to create symlink: ~/.claude.json -> $SHARED_DATA/auth/claude.json"
-    exit 1
-  fi
-  track_symlink "$HOME/.claude.json"
-
-  # Verify symlink
-  if [ ! -L "$HOME/.claude.json" ]; then
-    echo "E007: ERROR: Symlink verification failed for: ~/.claude.json"
-    exit 1
-  fi
-  echo "  ~/.claude.json -> $SHARED_DATA/auth/claude.json"
-else
-  echo "I001: INFO: No shared auth found."
-  echo "  Run 'setup-claude-auth-sharing' after first Claude authentication."
+# ~/.claude.json contains theme, MCP servers, OAuth, per-project state, caches
+CLAUDE_CONFIG_FILE="$SHARED_DATA/claude/config.json"
+if [ ! -f "$CLAUDE_CONFIG_FILE" ]; then
+  echo "  Bootstrapping empty config..."
+  echo '{}' > "$CLAUDE_CONFIG_FILE"
 fi
+
+if ! ln -sf "$CLAUDE_CONFIG_FILE" "$HOME/.claude.json"; then
+  echo "E006: ERROR: Failed to create symlink: ~/.claude.json -> $CLAUDE_CONFIG_FILE"
+  exit 1
+fi
+track_symlink "$HOME/.claude.json"
+
+# Verify symlink
+if [ ! -L "$HOME/.claude.json" ]; then
+  echo "E007: ERROR: Symlink verification failed for: ~/.claude.json"
+  exit 1
+fi
+echo "  ~/.claude.json -> $CLAUDE_CONFIG_FILE"
 
 check_fail_at_step 4
 
@@ -249,8 +257,8 @@ check_fail_at_step 4
 echo ""
 echo "[5] Setting up Claude data directory..."
 
-if ! ln -sf "$SHARED_DATA/history/$INSTANCE_ID/claude" "$HOME/.claude"; then
-  echo "E006: ERROR: Failed to create symlink: ~/.claude -> $SHARED_DATA/history/$INSTANCE_ID/claude"
+if ! ln -sf "$SHARED_DATA/instance/$INSTANCE_ID/claude" "$HOME/.claude"; then
+  echo "E006: ERROR: Failed to create symlink: ~/.claude -> $SHARED_DATA/instance/$INSTANCE_ID/claude"
   exit 1
 fi
 track_symlink "$HOME/.claude"
@@ -260,7 +268,7 @@ if [ ! -L "$HOME/.claude" ] || [ ! -d "$HOME/.claude" ]; then
   echo "E007: ERROR: Symlink verification failed for: ~/.claude"
   exit 1
 fi
-echo "  ~/.claude -> $SHARED_DATA/history/$INSTANCE_ID/claude"
+echo "  ~/.claude -> $SHARED_DATA/instance/$INSTANCE_ID/claude"
 
 check_fail_at_step 5
 
@@ -268,14 +276,17 @@ check_fail_at_step 5
 echo ""
 echo "[6] Setting up shared Claude settings..."
 
-SETTINGS_FILE="$SHARED_DATA/config/claude-settings.json"
+SETTINGS_FILE="$SHARED_DATA/claude/settings.json"
 if [ ! -f "$SETTINGS_FILE" ]; then
   echo "  Bootstrapping empty settings file..."
   echo '{}' > "$SETTINGS_FILE"
 else
-  # Validate JSON, repair if corrupted
+  # Validate JSON, backup and repair if corrupted
   if ! jq empty "$SETTINGS_FILE" 2>/dev/null; then
-    echo "  Settings file corrupted, resetting to empty..."
+    SETTINGS_BACKUP="$SETTINGS_FILE.corrupted.$(date +%s)"
+    echo "  Settings file corrupted, backing up to $SETTINGS_BACKUP..."
+    cp "$SETTINGS_FILE" "$SETTINGS_BACKUP"
+    echo "  Resetting to empty..."
     echo '{}' > "$SETTINGS_FILE"
   fi
 fi
@@ -296,9 +307,57 @@ echo "  ~/.claude/settings.json -> $SETTINGS_FILE"
 
 check_fail_at_step 6
 
-# --- Step 7: Symlink ~/.gemini -> shared directory ---
+# --- Step 7: Symlink Claude credentials (SHARED) ---
 echo ""
-echo "[7] Setting up Gemini directory (shared)..."
+echo "[7] Setting up shared Claude credentials..."
+
+# 7a: .credentials.json
+CREDENTIALS_FILE="$SHARED_DATA/claude/credentials.json"
+
+# Bootstrap with empty JSON if not exists
+if [ ! -f "$CREDENTIALS_FILE" ]; then
+  echo "  Bootstrapping empty credentials.json..."
+  echo '{}' > "$CREDENTIALS_FILE"
+fi
+
+if ! ln -sf "$CREDENTIALS_FILE" "$HOME/.claude/.credentials.json"; then
+  echo "E006: ERROR: Failed to create symlink: ~/.claude/.credentials.json -> $CREDENTIALS_FILE"
+  exit 1
+fi
+track_symlink "$HOME/.claude/.credentials.json"
+
+if [ ! -L "$HOME/.claude/.credentials.json" ]; then
+  echo "E007: ERROR: Symlink verification failed for: ~/.claude/.credentials.json"
+  exit 1
+fi
+echo "  ~/.claude/.credentials.json -> $CREDENTIALS_FILE"
+
+# 7b: .claude.json (inside ~/.claude/ - account info, auth, etc.)
+CLAUDE_INNER_CONFIG="$SHARED_DATA/claude/inner-config.json"
+
+# Bootstrap with empty JSON if not exists (Claude accepts {} as valid)
+if [ ! -f "$CLAUDE_INNER_CONFIG" ]; then
+  echo "  Bootstrapping empty inner-config.json..."
+  echo '{}' > "$CLAUDE_INNER_CONFIG"
+fi
+
+if ! ln -sf "$CLAUDE_INNER_CONFIG" "$HOME/.claude/.claude.json"; then
+  echo "E006: ERROR: Failed to create symlink: ~/.claude/.claude.json -> $CLAUDE_INNER_CONFIG"
+  exit 1
+fi
+track_symlink "$HOME/.claude/.claude.json"
+
+if [ ! -L "$HOME/.claude/.claude.json" ]; then
+  echo "E007: ERROR: Symlink verification failed for: ~/.claude/.claude.json"
+  exit 1
+fi
+echo "  ~/.claude/.claude.json -> $CLAUDE_INNER_CONFIG"
+
+check_fail_at_step 7
+
+# --- Step 8: Symlink ~/.gemini -> shared directory ---
+echo ""
+echo "[8] Setting up Gemini directory (shared)..."
 
 if ! ln -sf "$SHARED_DATA/gemini" "$HOME/.gemini"; then
   echo "E006: ERROR: Failed to create symlink: ~/.gemini -> $SHARED_DATA/gemini"
@@ -313,13 +372,13 @@ if [ ! -L "$HOME/.gemini" ]; then
 fi
 echo "  ~/.gemini -> $SHARED_DATA/gemini"
 
-check_fail_at_step 7
+check_fail_at_step 8
 
-# --- Step 8: Configure ZSH HISTFILE ---
+# --- Step 9: Configure ZSH HISTFILE ---
 echo ""
-echo "[8] Configuring ZSH history isolation..."
+echo "[9] Configuring ZSH history isolation..."
 
-HISTFILE_PATH="$SHARED_DATA/history/$INSTANCE_ID/zsh_history"
+HISTFILE_PATH="$SHARED_DATA/instance/$INSTANCE_ID/zsh_history"
 touch "$HISTFILE_PATH"
 
 # Disable any existing HISTFILE exports in .zshrc
@@ -327,17 +386,18 @@ if [ -f "$HOME/.zshrc" ]; then
   sed -i 's/^export HISTFILE=/#DISABLED_BY_ISOLATION# export HISTFILE=/' "$HOME/.zshrc" 2>/dev/null || true
 fi
 
-# Use marker line for idempotent updates
-MARKER_LINE="# [setup-instance-isolation] export HISTFILE=\"$HISTFILE_PATH\""
+# Use marker line for idempotent updates (marker at end as trailing comment)
+HISTFILE_MARKER="[setup-instance-isolation:HISTFILE]"
+HISTFILE_LINE="export HISTFILE=\"$HISTFILE_PATH\" # $HISTFILE_MARKER"
 
-if grep -q "\[setup-instance-isolation\]" "$HOME/.zshrc" 2>/dev/null; then
+if grep -q "$HISTFILE_MARKER" "$HOME/.zshrc" 2>/dev/null; then
   # Update existing line
-  sed -i "s|.*\[setup-instance-isolation\].*|$MARKER_LINE|" "$HOME/.zshrc"
+  sed -i "s|.*$HISTFILE_MARKER.*|$HISTFILE_LINE|" "$HOME/.zshrc"
   echo "  Updated HISTFILE in .zshrc"
 else
   # Append new line
   echo "" >> "$HOME/.zshrc"
-  echo "$MARKER_LINE" >> "$HOME/.zshrc"
+  echo "$HISTFILE_LINE" >> "$HOME/.zshrc"
   echo "  Added HISTFILE to .zshrc"
 fi
 
@@ -345,11 +405,11 @@ fi
 export HISTFILE="$HISTFILE_PATH"
 echo "  HISTFILE=$HISTFILE_PATH (effective on next shell session)"
 
-check_fail_at_step 8
+check_fail_at_step 9
 
-# --- Step 9: Final health check ---
+# --- Step 10: Final health check ---
 echo ""
-echo "[9] Running final health check..."
+echo "[10] Running final health check..."
 
 verify_writable() {
   local path="$1"
@@ -390,40 +450,37 @@ if [ "$HEALTH_CHECK_FAILED" = true ]; then
 fi
 echo "  All symlinks verified writable"
 
-check_fail_at_step 9
+check_fail_at_step 10
 
-# --- Step 10: Export CLAUDE_INSTANCE ---
+# --- Step 11: Export CLAUDE_INSTANCE ---
 echo ""
-echo "[10] Exporting instance ID..."
+echo "[11] Exporting instance ID..."
 
-INSTANCE_MARKER_LINE="# [setup-instance-isolation] export CLAUDE_INSTANCE=\"$INSTANCE_ID\""
+INSTANCE_MARKER="[setup-instance-isolation:CLAUDE_INSTANCE]"
+INSTANCE_LINE="export CLAUDE_INSTANCE=\"$INSTANCE_ID\" # $INSTANCE_MARKER"
 
-if grep -q "CLAUDE_INSTANCE=" "$HOME/.zshrc" 2>/dev/null; then
+if grep -q "$INSTANCE_MARKER" "$HOME/.zshrc" 2>/dev/null; then
   # Update existing line
-  sed -i "s|.*CLAUDE_INSTANCE=.*|$INSTANCE_MARKER_LINE|" "$HOME/.zshrc"
+  sed -i "s|.*$INSTANCE_MARKER.*|$INSTANCE_LINE|" "$HOME/.zshrc"
 else
   # Append new line
-  echo "$INSTANCE_MARKER_LINE" >> "$HOME/.zshrc"
+  echo "$INSTANCE_LINE" >> "$HOME/.zshrc"
 fi
 
 export CLAUDE_INSTANCE="$INSTANCE_ID"
 echo "  CLAUDE_INSTANCE=$INSTANCE_ID"
 
-check_fail_at_step 10
+check_fail_at_step 11
 
 # --- Success ---
 echo ""
-echo "I002: INFO: Instance isolation complete for: $INSTANCE_ID"
+echo "Instance isolation complete for: $INSTANCE_ID"
 echo ""
 echo "Summary:"
-echo "  Instance ID:      $INSTANCE_ID"
-echo "  ZSH history:      $SHARED_DATA/history/$INSTANCE_ID/zsh_history"
-echo "  Claude data:      $SHARED_DATA/history/$INSTANCE_ID/claude/"
-echo "  Claude settings:  $SHARED_DATA/config/claude-settings.json (shared)"
-echo "  Gemini:           $SHARED_DATA/gemini/ (shared)"
-
-if [ ! -f "$SHARED_DATA/auth/claude.json" ]; then
-  echo ""
-  echo "NOTE: No shared Claude auth found. After authenticating with 'claude',"
-  echo "      run 'setup-claude-auth-sharing' to share credentials with other instances."
-fi
+echo "  Instance ID:        $INSTANCE_ID"
+echo "  Claude data:        $SHARED_DATA/instance/$INSTANCE_ID/claude/ (per-instance)"
+echo "  Claude credentials: $SHARED_DATA/claude/credentials.json (shared)"
+echo "  Claude settings:    $SHARED_DATA/claude/settings.json (shared)"
+echo "  Claude config:      $SHARED_DATA/claude/config.json (shared - theme, MCP, state)"
+echo "  Gemini:             $SHARED_DATA/gemini/ (shared)"
+echo "  ZSH history:        $SHARED_DATA/instance/$INSTANCE_ID/zsh_history (per-instance)"
