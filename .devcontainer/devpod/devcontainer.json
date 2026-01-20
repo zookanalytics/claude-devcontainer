@@ -1,8 +1,12 @@
 {
-  "name": "claude-devcontainer",
+  // Container naming: Uses DEVPOD_WORKSPACE_ID which includes repo prefix
+  // Use the wrapper script: ./scripts/devpod-up <instance-id> [repo]
+  // Example: devpod-up agent-1 → workspace "main-agent-1" → container "main-agent-1"
+  "name": "${localEnv:DEVPOD_WORKSPACE_ID}",
   "image": "ghcr.io/zookanalytics/claude-devcontainer:latest",
 
   "runArgs": [
+    "--name=${localEnv:DEVPOD_WORKSPACE_ID}",
     "--cap-add=NET_ADMIN",
     "--cap-add=NET_RAW",
     "--cap-add=SYSLOG"
@@ -31,11 +35,13 @@
     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
     "CLAUDE_CODE_VERSION": "latest",
     "CLAUDE_CONFIG_DIR": "/home/node/.claude",
+    "CLAUDE_INSTANCE": "${localEnv:DEVPOD_WORKSPACE_ID}",
     "GEMINI_CLI_VERSION": "latest",
     "PNPM_HOME": "/pnpm",
     "PROJECT_NAME": "claude-devcontainer",
     "SHARED_DATA_DIR": "/shared-data",
-    "npm_config_store_dir": "/workspace/.pnpm-store"
+    "npm_config_store_dir": "/workspace/.pnpm-store",
+    "npm_config_virtual_store_dir": ".pnpm-store/container/${localEnv:DEVPOD_WORKSPACE_ID}"
   },
 
   "workspaceFolder": "/workspace",
@@ -44,6 +50,7 @@
   "customizations": {
     "vscode": {
       "settings": {
+        "window.title": "${containerEnv:CLAUDE_INSTANCE}${separator}${activeRepositoryBranchName}${dirty}",
         "terminal.integrated.defaultProfile.linux": "zsh",
         "terminal.integrated.profiles.linux": {
           "zsh": {
@@ -52,13 +59,22 @@
           "tmux": {
             "path": "/home/node/.local/bin/tmux-session"
           }
-        }
+        },
+        "geminicodeassist.agentYoloMode": true
       },
       "extensions": [
         "Anthropic.claude-code",
+        "appulate.filewatcher",
+        "bierner.markdown-mermaid",
+        "bierner.markdown-footnotes",
+        "DavidAnson.vscode-markdownlint",
+        "dbaeumer.vscode-eslint",
         "eamodio.gitlens",
         "esbenp.prettier-vscode",
-        "dbaeumer.vscode-eslint",
+        "github.vscode-github-actions",
+        "google.gemini-cli-vscode-ide-companion",
+        "ms-playwright.playwright",
+        "RobertOstermann.better-status-bar",
         "usernamehw.errorlens"
       ]
     }

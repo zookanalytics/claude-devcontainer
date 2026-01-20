@@ -1,0 +1,165 @@
+#!/usr/bin/env bash
+# devpod-up: Wrapper for 'devpod up' that ensures proper container naming
+#
+# This script:
+# 1. Auto-prefixes instance ID with repo name (ensures global uniqueness)
+# 2. Exports DEVPOD_WORKSPACE_ID for devcontainer.json templating
+# 3. Uses the devpod-specific devcontainer.json
+# 4. Optionally builds and uses local Docker image (--local flag)
+#
+# Usage:
+#   devpod-up <instance-id> [repo] [options...]
+#   devpod-up --local <instance-id> [repo] [options...]
+#
+# Examples:
+#   devpod-up agent-1 https://github.com/user/myrepo
+#   # Creates workspace & container: myrepo-agent-1
+#
+#   devpod-up --local agent-1
+#   # Builds local image first, then creates workspace
+#
+# The full workspace ID becomes: <repo-name>-<instance-id>
+
+set -euo pipefail
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+LOCAL_BUILD=false
+LOCAL_IMAGE="claude-devcontainer:local"
+
+usage() {
+    cat <<EOF
+Usage: devpod-up [--local] <instance-id> [repo] [devpod-options...]
+
+Creates a DevPod workspace with proper naming for multi-repo use.
+
+Options:
+  --local         Build and use local Docker image instead of remote
+
+Arguments:
+  instance-id     Short instance name (e.g., agent-1, dev)
+  repo            Git URL or local path (default: current directory)
+  devpod-options  Additional options passed to 'devpod up'
+
+The workspace ID will be: <repo-name>-<instance-id>
+This ensures uniqueness across different repositories.
+
+Examples:
+  devpod-up agent-1 https://github.com/user/myrepo
+  # Workspace ID: myrepo-agent-1
+
+  devpod-up --local agent-1
+  # Builds local image, creates: main-agent-1
+
+  devpod-up dev /path/to/signal-loom
+  # Workspace ID: signal-loom-dev
+EOF
+    exit 1
+}
+
+if ! command -v devpod &>/dev/null; then
+    echo -e "${RED}Error: devpod CLI is not installed${NC}"
+    echo "Install from: https://devpod.sh/docs/getting-started/install"
+    exit 1
+fi
+
+if [[ $# -lt 1 ]]; then
+    usage
+fi
+
+# Parse --local flag
+if [[ "$1" == "--local" ]]; then
+    LOCAL_BUILD=true
+    shift
+fi
+
+if [[ $# -lt 1 ]]; then
+    usage
+fi
+
+SHORT_ID="$1"
+shift
+
+if [[ ! "$SHORT_ID" =~ ^[a-zA-Z0-9][a-zA-Z0-9_-]*$ ]]; then
+    echo -e "${RED}Error: Invalid instance ID '$SHORT_ID'${NC}"
+    echo "Must start with alphanumeric, contain only a-z, 0-9, hyphens, underscores"
+    exit 1
+fi
+
+# Determine repo source - next arg if it doesn't start with -
+REPO="."
+if [[ $# -gt 0 && ! "$1" =~ ^- ]]; then
+    REPO="$1"
+    shift
+fi
+
+# Extract repo name for prefixing
+if [[ "$REPO" == "." ]]; then
+    REPO_NAME="$(basename "$PWD")"
+elif [[ "$REPO" =~ ^https?:// ]]; then
+    REPO_NAME="$(basename "$REPO" .git)"
+else
+    REPO_NAME="$(basename "$REPO")"
+fi
+
+# Full workspace ID = repo-instance (globally unique)
+# This becomes both the DevPod workspace ID and Docker container name
+WORKSPACE_ID="${REPO_NAME}-${SHORT_ID}"
+
+export DEVPOD_WORKSPACE_ID="$WORKSPACE_ID"
+
+# Check if DevPod workspace already exists
+if devpod list --output json 2>/dev/null | grep -q "\"id\":\"$WORKSPACE_ID\""; then
+    if [[ "$LOCAL_BUILD" == true ]]; then
+        echo -e "${YELLOW}Workspace '$WORKSPACE_ID' exists. Use --recreate to rebuild with local image.${NC}"
+        echo "  devpod delete $WORKSPACE_ID && ./scripts/devpod-up --local $SHORT_ID"
+        echo ""
+        echo -e "${YELLOW}Starting existing workspace...${NC}"
+    else
+        echo -e "${YELLOW}Starting existing workspace: $WORKSPACE_ID${NC}"
+    fi
+    echo ""
+    exec devpod up "$WORKSPACE_ID" "$@"
+fi
+
+# Check if Docker container with that name already exists (orphaned from deleted workspace)
+if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx "$WORKSPACE_ID"; then
+    echo -e "${RED}Error: Docker container '$WORKSPACE_ID' exists but no matching DevPod workspace${NC}"
+    echo "Remove orphaned container: docker rm $WORKSPACE_ID"
+    exit 1
+fi
+
+# Build local image if requested
+if [[ "$LOCAL_BUILD" == true ]]; then
+    # Find the repo root (where image/Dockerfile lives)
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+    if [[ ! -f "$REPO_ROOT/image/Dockerfile" ]]; then
+        echo -e "${RED}Error: Cannot find image/Dockerfile in $REPO_ROOT${NC}"
+        exit 1
+    fi
+
+    echo -e "${BLUE}Building local Docker image...${NC}"
+    docker build -f "$REPO_ROOT/image/Dockerfile" -t "$LOCAL_IMAGE" "$REPO_ROOT"
+    echo ""
+fi
+
+echo -e "${GREEN}Creating DevPod workspace${NC}"
+echo -e "  Repo:      $REPO_NAME"
+echo -e "  Instance:  $SHORT_ID"
+echo -e "  Workspace: $WORKSPACE_ID (also container name)"
+if [[ "$LOCAL_BUILD" == true ]]; then
+    echo -e "  Image:     $LOCAL_IMAGE (local build)"
+fi
+echo ""
+
+if [[ "$LOCAL_BUILD" == true ]]; then
+    exec devpod up "$REPO" --id "$WORKSPACE_ID" --devcontainer-path .devcontainer/devpod/devcontainer.json --devcontainer-image "$LOCAL_IMAGE" "$@"
+else
+    exec devpod up "$REPO" --id "$WORKSPACE_ID" --devcontainer-path .devcontainer/devpod/devcontainer.json "$@"
+fi
