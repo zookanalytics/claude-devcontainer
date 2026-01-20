@@ -6,12 +6,17 @@
     "node": ">=22.0.0"
   },
   "scripts": {
-    "build:image": "docker build -f image/Dockerfile -t claude-devcontainer .",
+    "build:image": "docker build -f image/Dockerfile -t claude-devcontainer:local .",
     "commitlint": "commitlint --edit",
     "lint": "claude plugin validate . && pnpm -r lint",
     "pre-commit": "pnpm -r --if-present run lint && pnpm -r --if-present run typecheck",
     "prepare": "husky",
-    "test": "pnpm -r test"
+    "test": "pnpm -r test",
+    "devpod:up": "devpod up . --id test-local --devcontainer-path .devcontainer/devpod/devcontainer.json --devcontainer-image claude-devcontainer:local",
+    "devpod:down": "devpod delete test-local",
+    "devpod:ssh": "devpod ssh test-local",
+    "devpod:recreate": "pnpm devpod:down; pnpm build:image && pnpm devpod:up",
+    "devpod:logs": "devpod up . --id test-local --devcontainer-path .devcontainer/devpod/devcontainer.json --devcontainer-image claude-devcontainer:local --debug 2>&1 | head -200"
   },
   "devDependencies": {
     "@commitlint/cli": "^20.3.0",

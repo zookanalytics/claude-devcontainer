@@ -135,6 +135,10 @@ COPY image/scripts/update-packages.sh /usr/local/bin/
 COPY image/scripts/find-blocked-domain.sh /usr/local/bin/
 COPY image/scripts/test-firewall-logging.sh /usr/local/bin/
 COPY image/scripts/assemble-managed-settings.sh /usr/local/bin/
+COPY image/scripts/setup-instance-isolation.sh /usr/local/bin/
+COPY image/scripts/setup-claude-auth-sharing.sh /usr/local/bin/
+COPY image/scripts/search-history.sh /usr/local/bin/
+COPY image/scripts/fix-shared-data-permissions.sh /usr/local/bin/
 
 # Make scripts executable and configure sudo
 RUN chmod 755 /usr/local/bin/init-firewall.sh && \
@@ -149,6 +153,10 @@ RUN chmod 755 /usr/local/bin/init-firewall.sh && \
   chmod 755 /usr/local/bin/find-blocked-domain.sh && \
   chmod 755 /usr/local/bin/test-firewall-logging.sh && \
   chmod 755 /usr/local/bin/assemble-managed-settings.sh && \
+  chmod 755 /usr/local/bin/setup-instance-isolation.sh && \
+  chmod 755 /usr/local/bin/setup-claude-auth-sharing.sh && \
+  chmod 755 /usr/local/bin/search-history.sh && \
+  chmod 755 /usr/local/bin/fix-shared-data-permissions.sh && \
   echo "node ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh" > /etc/sudoers.d/node-commands && \
   echo "node ALL=(root) NOPASSWD: /usr/local/bin/assemble-managed-settings.sh" >> /etc/sudoers.d/node-commands && \
   echo "node ALL=(root) NOPASSWD: /usr/local/bin/fix-node-modules-ownership.sh" >> /etc/sudoers.d/node-commands && \
@@ -156,6 +164,7 @@ RUN chmod 755 /usr/local/bin/init-firewall.sh && \
   echo "node ALL=(root) NOPASSWD: /usr/local/bin/start-ulogd.sh" >> /etc/sudoers.d/node-commands && \
   echo "node ALL=(root) NOPASSWD: /usr/local/bin/read-firewall-logs.sh" >> /etc/sudoers.d/node-commands && \
   echo "node ALL=(root) NOPASSWD: /usr/local/bin/update-packages.sh" >> /etc/sudoers.d/node-commands && \
+  echo "node ALL=(root) NOPASSWD: /usr/local/bin/fix-shared-data-permissions.sh" >> /etc/sudoers.d/node-commands && \
   chmod 0440 /etc/sudoers.d/node-commands
 
 # Create log files with proper permissions

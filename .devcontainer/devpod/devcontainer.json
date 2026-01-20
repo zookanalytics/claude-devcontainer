@@ -1,0 +1,66 @@
+{
+  "name": "claude-devcontainer",
+  "image": "ghcr.io/zookanalytics/claude-devcontainer:latest",
+
+  "runArgs": [
+    "--cap-add=NET_ADMIN",
+    "--cap-add=NET_RAW",
+    "--cap-add=SYSLOG"
+  ],
+
+  "remoteUser": "node",
+
+  // Volume strategy (unified shared-data approach):
+  // /shared-data volume layout:
+  //   - auth/claude.json     Claude OAuth token (shared, symlinked to ~/.claude.json)
+  //   - gemini/              Entire Gemini directory (shared, symlinked to ~/.gemini)
+  //   - config/claude-settings.json   Shared Claude preferences
+  //   - history/<instance>/  Per-instance isolation:
+  //       - claude/          Symlink target for ~/.claude (per-instance conversations)
+  //       - zsh_history      Per-instance shell history
+  //
+  // Instance isolation is handled at runtime by setup-instance-isolation.sh
+  // using DEVPOD_WORKSPACE_ID to create per-instance directories.
+  // Auth sharing requires manual 'setup-claude-auth-sharing' after first auth.
+  "mounts": [
+    "source=claude-devcontainer-shared-data,target=/shared-data,type=volume",
+    "source=pnpm-store,target=/workspace/.pnpm-store,type=volume"
+  ],
+
+  "containerEnv": {
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
+    "CLAUDE_CODE_VERSION": "latest",
+    "CLAUDE_CONFIG_DIR": "/home/node/.claude",
+    "GEMINI_CLI_VERSION": "latest",
+    "PNPM_HOME": "/pnpm",
+    "PROJECT_NAME": "claude-devcontainer",
+    "SHARED_DATA_DIR": "/shared-data",
+    "npm_config_store_dir": "/workspace/.pnpm-store"
+  },
+
+  "workspaceFolder": "/workspace",
+  "postCreateCommand": "/usr/local/bin/post-create.sh",
+
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "zsh",
+        "terminal.integrated.profiles.linux": {
+          "zsh": {
+            "path": "/bin/zsh"
+          },
+          "tmux": {
+            "path": "/home/node/.local/bin/tmux-session"
+          }
+        }
+      },
+      "extensions": [
+        "Anthropic.claude-code",
+        "eamodio.gitlens",
+        "esbenp.prettier-vscode",
+        "dbaeumer.vscode-eslint",
+        "usernamehw.errorlens"
+      ]
+    }
+  }
+}

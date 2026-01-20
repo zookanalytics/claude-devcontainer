@@ -57,7 +57,6 @@
     "CLAUDE_CONFIG_DIR": "/home/node/.claude",
     "CLAUDE_INSTANCE": "${localWorkspaceFolderBasename}",
     "GEMINI_CLI_VERSION": "latest",
-    "NODE_OPTIONS": "--max-old-space-size=4096",
     "PNPM_HOME": "/pnpm",
     "PROJECT_NAME": "claude-devcontainer",
     "npm_config_store_dir": "/workspace/.pnpm-store",
