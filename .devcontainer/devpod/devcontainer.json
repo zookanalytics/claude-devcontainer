@@ -31,7 +31,7 @@
   // Credentials are auto-shared (bootstrapped as empty JSON on first run).
   "mounts": [
     "source=claude-devcontainer-shared-data,target=/shared-data,type=volume",
-    "source=pnpm-store,target=/workspace/.pnpm-store,type=volume"
+    "source=pnpm-store,target=/workspaces/.pnpm-store,type=volume"
   ],
 
   "containerEnv": {
@@ -43,11 +43,13 @@
     "PNPM_HOME": "/pnpm",
     "PROJECT_NAME": "claude-devcontainer",
     "SHARED_DATA_DIR": "/shared-data",
-    "npm_config_store_dir": "/workspace/.pnpm-store",
+    "WORKSPACE_ROOT": "${containerWorkspaceFolder}",
+    "npm_config_store_dir": "/workspaces/.pnpm-store",
     "npm_config_virtual_store_dir": ".pnpm-store/container/${localEnv:DEVPOD_WORKSPACE_ID}"
   },
 
-  "workspaceFolder": "/workspace",
+  // workspaceFolder: Let DevPod use its default (/workspaces/<workspace-id>)
+  // DevPod doesn't resolve ${localEnv:...} in this field
   "postCreateCommand": "/usr/local/bin/post-create.sh",
 
   "customizations": {

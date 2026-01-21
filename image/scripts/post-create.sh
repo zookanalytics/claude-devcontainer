@@ -1,9 +1,12 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
 # Post-create command for Claude DevContainer base image
 # Handles initialization tasks after container creation
-# Projects can extend via /workspace/.devcontainer/post-create-project.sh
+# Projects can extend via <workspace>/.devcontainer/post-create-project.sh
+
+# Detect workspace root - environment variable or git root fallback
+WORKSPACE_ROOT="${WORKSPACE_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 
 # Prevent Corepack from prompting during package installations
 export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
@@ -105,7 +108,7 @@ echo "✓ Firewall initialized"
 # Step 9: Run project-specific post-create if it exists
 echo ""
 echo "[9/9] Running project-specific setup..."
-PROJECT_POST_CREATE="/workspace/.devcontainer/post-create-project.sh"
+PROJECT_POST_CREATE="$WORKSPACE_ROOT/.devcontainer/post-create-project.sh"
 if [ -f "$PROJECT_POST_CREATE" ]; then
     echo "Running $PROJECT_POST_CREATE..."
     chmod +x "$PROJECT_POST_CREATE"

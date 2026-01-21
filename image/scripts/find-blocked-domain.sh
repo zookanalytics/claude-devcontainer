@@ -3,6 +3,9 @@
 
 set -euo pipefail
 
+# Detect workspace root - environment variable or git root fallback
+WORKSPACE_ROOT="${WORKSPACE_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+
 DNSMASQ_LOG="/var/log/dnsmasq.log"
 
 # Configuration constants
@@ -116,7 +119,7 @@ find_domain_for_ip() {
 is_in_allowlist() {
     local domain=$1
     # Check both base and project-specific allowlists
-    for allowlist in "/etc/allowed-domains.txt" "/workspace/.devcontainer/allowed-domains.txt"; do
+    for allowlist in "/etc/allowed-domains.txt" "$WORKSPACE_ROOT/.devcontainer/allowed-domains.txt"; do
         if [ -f "$allowlist" ] && grep -qxF "$domain" "$allowlist" 2>/dev/null; then
             return 0
         fi

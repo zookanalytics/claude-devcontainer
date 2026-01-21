@@ -28,8 +28,13 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
+# Script location (used for finding Dockerfile and devcontainer.json)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
 LOCAL_BUILD=false
 LOCAL_IMAGE="claude-devcontainer:local"
+FALLBACK_IMAGE="ghcr.io/zookanalytics/claude-devcontainer:latest"
 NO_IDE=false
 
 usage() {
@@ -37,6 +42,9 @@ usage() {
 Usage: devpod-up [options] <instance-id> [repo] [devpod-options...]
 
 Creates a DevPod workspace with proper naming for multi-repo use.
+
+For repos without devcontainer.json, the fallback image provides a full
+Claude DevContainer environment with firewall, credentials, and tools.
 
 Options:
   --local         Build and use local Docker image instead of remote
@@ -59,6 +67,9 @@ Examples:
 
   devpod-up dev /path/to/signal-loom
   # Workspace ID: signal-loom-dev
+
+  devpod-up explore https://github.com/expressjs/express
+  # Uses fallback image for third-party repo (no devcontainer.json needed)
 EOF
     exit 1
 }
@@ -164,10 +175,6 @@ fi
 
 # Build local image if requested
 if [[ "$LOCAL_BUILD" == true ]]; then
-    # Find the repo root (where image/Dockerfile lives)
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-
     if [[ ! -f "$REPO_ROOT/image/Dockerfile" ]]; then
         echo -e "${RED}Error: Cannot find image/Dockerfile in $REPO_ROOT${NC}"
         exit 1
@@ -186,7 +193,7 @@ if [[ "$LOCAL_BUILD" == true ]]; then
     echo -e "  Image:     $LOCAL_IMAGE (local build)"
 fi
 if [[ "$IS_REMOTE" == true ]]; then
-    echo -e "  Source:    remote (using default devcontainer.json)"
+    echo -e "  Source:    remote (uses repo's devcontainer.json if present, else fallback image)"
 else
     echo -e "  Config:    .devcontainer/devpod/devcontainer.json"
 fi
@@ -195,9 +202,22 @@ echo ""
 # Build the devpod command
 DEVPOD_ARGS=("$REPO" --id "$WORKSPACE_ID")
 
-# Only use devpod-specific config for local repos (remote may not have it)
+# Always provide fallback image for repos without devcontainer.json
+# This enables using our full environment with any third-party repository
+DEVPOD_ARGS+=(--fallback-image "$FALLBACK_IMAGE")
+
+# For local repos (current dir or local path), use our devcontainer config
+# Remote repos may not have it, so they rely on the fallback image
+# Note: --devcontainer-path expects a path RELATIVE to the repo root
+DEVCONTAINER_CONFIG_ABS="$REPO_ROOT/.devcontainer/devpod/devcontainer.json"
+DEVCONTAINER_CONFIG_REL=".devcontainer/devpod/devcontainer.json"
 if [[ "$IS_REMOTE" == false ]]; then
-    DEVPOD_ARGS+=(--devcontainer-path .devcontainer/devpod/devcontainer.json)
+    if [[ ! -f "$DEVCONTAINER_CONFIG_ABS" ]]; then
+        echo -e "${YELLOW}Warning: devcontainer.json not found at $DEVCONTAINER_CONFIG_ABS${NC}"
+        echo -e "${YELLOW}Relying on fallback image configuration${NC}"
+    else
+        DEVPOD_ARGS+=(--devcontainer-path "$DEVCONTAINER_CONFIG_REL")
+    fi
 fi
 
 # Add local image if requested

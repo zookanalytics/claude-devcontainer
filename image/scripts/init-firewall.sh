@@ -2,6 +2,13 @@
 set -euo pipefail  # Exit on error, undefined vars, and pipeline failures
 IFS=$'\n\t'       # Stricter word splitting
 
+# Detect workspace root - environment variable or git root fallback
+# SECURITY: This script runs as root. The git command is safe because:
+# 1. git rev-parse only reads .git/config, doesn't execute arbitrary code
+# 2. WORKSPACE_ROOT is only used to read allowed-domains.txt (validated by process_domains_file)
+# 3. A malicious .git could at worst cause wrong path detection, not code execution
+WORKSPACE_ROOT="${WORKSPACE_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
+
 # SECURITY NOTE: This script temporarily sets ACCEPT policies during execution
 # to allow re-runs. If the script fails mid-execution, the error trap handler
 # restores DROP policies for defense-in-depth. The 'set -euo pipefail' ensures
@@ -124,7 +131,7 @@ process_domains_file() {
 process_domains_file "/etc/allowed-domains.txt"
 
 # Process project-specific domains (if present)
-process_domains_file "/workspace/.devcontainer/allowed-domains.txt"
+process_domains_file "$WORKSPACE_ROOT/.devcontainer/allowed-domains.txt"
 
 # Get host IP from default route
 HOST_IP=$(ip route | grep default | cut -d" " -f3)
