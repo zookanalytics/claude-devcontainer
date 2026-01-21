@@ -1,62 +1,36 @@
 {
-  // Container naming: Uses DEVPOD_WORKSPACE_ID which includes repo prefix
+  // DevPod-specific devcontainer configuration
+  // ==========================================
+  // This file ONLY contains DevPod-specific overrides. The base configuration
+  // (remoteUser, mounts, containerEnv, postCreateCommand, etc.) is embedded
+  // in the Docker image via LABEL devcontainer.metadata. DevPod merges both.
+  //
   // Use the wrapper script: ./scripts/devpod-up <instance-id> [repo]
   // Example: devpod-up agent-1 → workspace "main-agent-1" → container "main-agent-1"
+
   "name": "${localEnv:DEVPOD_WORKSPACE_ID}",
   "image": "ghcr.io/zookanalytics/claude-devcontainer:latest",
 
+  // Container naming requires runArgs (can't use capAdd in LABEL for --name)
   "runArgs": [
-    "--name=${localEnv:DEVPOD_WORKSPACE_ID}",
-    "--cap-add=NET_ADMIN",
-    "--cap-add=NET_RAW",
-    "--cap-add=SYSLOG"
+    "--name=${localEnv:DEVPOD_WORKSPACE_ID}"
   ],
 
-  "remoteUser": "node",
-
-  // Volume strategy (organized by program):
-  // /shared-data volume layout:
-  //   - claude/                   Shared Claude state:
-  //       - config.json           Theme, MCP servers, project state (~/.claude.json)
-  //       - credentials.json      OAuth tokens (~/.claude/.credentials.json)
-  //       - settings.json         User preferences (~/.claude/settings.json)
-  //       - inner-config.json     Account info, auth state (~/.claude/.claude.json)
-  //   - gemini/                   Entire Gemini directory (~/.gemini)
-  //   - instance/<id>/            Per-instance isolation:
-  //       - claude/               History, projects, todos (~/.claude)
-  //       - zsh_history           Shell history
-  //
-  // Instance isolation is handled at runtime by setup-instance-isolation.sh
-  // using DEVPOD_WORKSPACE_ID to create per-instance directories.
-  // Credentials are auto-shared (bootstrapped as empty JSON on first run).
-  "mounts": [
-    "source=claude-devcontainer-shared-data,target=/shared-data,type=volume",
-    "source=pnpm-store,target=/workspaces/.pnpm-store,type=volume"
-  ],
-
+  // DevPod-specific environment variables (additions to image defaults)
+  // Note: Image LABEL provides base containerEnv; these are merged/overridden
   "containerEnv": {
-    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-    "CLAUDE_CODE_VERSION": "latest",
-    "CLAUDE_CONFIG_DIR": "/home/node/.claude",
     "CLAUDE_INSTANCE": "${localEnv:DEVPOD_WORKSPACE_ID}",
-    "GEMINI_CLI_VERSION": "latest",
-    "PNPM_HOME": "/pnpm",
+    "DEVPOD_WORKSPACE_ID": "${localEnv:DEVPOD_WORKSPACE_ID}",
     "PROJECT_NAME": "claude-devcontainer",
-    "SHARED_DATA_DIR": "/shared-data",
     "WORKSPACE_ROOT": "${containerWorkspaceFolder}",
-    "npm_config_store_dir": "/workspaces/.pnpm-store",
     "npm_config_virtual_store_dir": ".pnpm-store/container/${localEnv:DEVPOD_WORKSPACE_ID}"
   },
 
-  // workspaceFolder: Let DevPod use its default (/workspaces/<workspace-id>)
-  // DevPod doesn't resolve ${localEnv:...} in this field
-  "postCreateCommand": "/usr/local/bin/post-create.sh",
-
+  // VS Code customizations (additions to image defaults)
   "customizations": {
     "vscode": {
       "settings": {
         "window.title": "${containerEnv:CLAUDE_INSTANCE}${separator}${activeRepositoryBranchName}${dirty}",
-        "terminal.integrated.defaultProfile.linux": "zsh",
         "terminal.integrated.profiles.linux": {
           "zsh": {
             "path": "/bin/zsh"
@@ -68,16 +42,11 @@
         "geminicodeassist.agentYoloMode": true
       },
       "extensions": [
-        "Anthropic.claude-code",
         "appulate.filewatcher",
         "bierner.markdown-mermaid",
         "bierner.markdown-footnotes",
         "DavidAnson.vscode-markdownlint",
-        "dbaeumer.vscode-eslint",
-        "eamodio.gitlens",
-        "esbenp.prettier-vscode",
         "github.vscode-github-actions",
-        "google.gemini-cli-vscode-ide-companion",
         "ms-playwright.playwright",
         "RobertOstermann.better-status-bar",
         "usernamehw.errorlens"

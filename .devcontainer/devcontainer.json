@@ -1,20 +1,46 @@
 {
+  // VS Code DevContainers configuration
+  // ===================================
+  // This config is for VS Code's DevContainers extension (not DevPod).
+  // Base configuration is in the Docker image LABEL devcontainer.metadata.
+  // This file overrides paths for VS Code's /workspace convention.
+
   "name": "claude-devcontainer - ${localWorkspaceFolderBasename}",
   "image": "ghcr.io/zookanalytics/claude-devcontainer:latest",
+
+  // Container naming (can't use LABEL for --name with variables)
   "runArgs": [
-    "--name=claude-devcontainer-${localWorkspaceFolderBasename}",
-    "--cap-add=NET_ADMIN",
-    "--cap-add=NET_RAW",
-    "--cap-add=SYSLOG"
+    "--name=claude-devcontainer-${localWorkspaceFolderBasename}"
   ],
+
+  // VS Code uses /workspace (singular) instead of /workspaces/<id>
+  // Override mounts to use VS Code's volume naming and paths
+  "mounts": [
+    "source=claude-devcontainer-bashhistory-${localWorkspaceFolderBasename},target=/commandhistory,type=volume",
+    "source=claude-devcontainer-claude-config,target=/home/node/.claude,type=volume",
+    "source=claude-devcontainer-gemini-config,target=/home/node/.gemini,type=volume",
+    "source=claude-devcontainer-shared-config,target=/home/node/.config,type=volume",
+    "source=pnpm-store,target=/workspace/.pnpm-store,type=volume",
+    "source=claude-devcontainer-node-modules-${localWorkspaceFolderBasename},target=/workspace/node_modules,type=volume"
+  ],
+
+  // VS Code-specific environment (overrides/additions to image defaults)
+  "containerEnv": {
+    "CLAUDE_INSTANCE": "${localWorkspaceFolderBasename}",
+    "PROJECT_NAME": "claude-devcontainer",
+    "npm_config_store_dir": "/workspace/.pnpm-store",
+    "npm_config_virtual_store_dir": ".pnpm-store/container/${localWorkspaceFolderBasename}"
+  },
+
+  // VS Code workspace configuration
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
+  "workspaceFolder": "/workspace",
+
+  // VS Code customizations (additions to image defaults)
   "customizations": {
     "vscode": {
-      // vscode settings applicable explicitly to dev containers. Common logic in settings.json
       "settings": {
-        // Window title shows instance name for easy identification when switching windows
         "window.title": "claude-devcontainer - ${containerEnv:CLAUDE_INSTANCE}${separator}${activeRepositoryBranchName}${dirty}",
-        // Terminal profiles: zsh default for normal use, tmux for persistent/shared sessions
-        "terminal.integrated.defaultProfile.linux": "zsh",
         "terminal.integrated.profiles.linux": {
           "zsh": {
             "path": "/bin/zsh"
@@ -26,43 +52,15 @@
         "geminicodeassist.agentYoloMode": true
       },
       "extensions": [
-        "Anthropic.claude-code",
         "appulate.filewatcher",
         "bierner.markdown-mermaid",
         "bierner.markdown-footnotes",
         "DavidAnson.vscode-markdownlint",
-        "dbaeumer.vscode-eslint",
-        "eamodio.gitlens",
-        "esbenp.prettier-vscode",
         "github.vscode-github-actions",
         "ms-playwright.playwright",
         "RobertOstermann.better-status-bar",
-        "usernamehw.errorlens",
-        "google.gemini-cli-vscode-ide-companion"
+        "usernamehw.errorlens"
       ]
     }
-  },
-  "remoteUser": "node",
-  "mounts": [
-    "source=claude-devcontainer-bashhistory-${localWorkspaceFolderBasename},target=/commandhistory,type=volume",
-    "source=claude-devcontainer-claude-config,target=/home/node/.claude,type=volume",
-    "source=claude-devcontainer-gemini-config,target=/home/node/.gemini,type=volume",
-    "source=claude-devcontainer-shared-config,target=/home/node/.config,type=volume",
-    "source=pnpm-store,target=/workspace/.pnpm-store,type=volume",
-    "source=claude-devcontainer-node-modules-${localWorkspaceFolderBasename},target=/workspace/node_modules,type=volume"
-  ],
-  "containerEnv": {
-    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
-    "CLAUDE_CODE_VERSION": "latest",
-    "CLAUDE_CONFIG_DIR": "/home/node/.claude",
-    "CLAUDE_INSTANCE": "${localWorkspaceFolderBasename}",
-    "GEMINI_CLI_VERSION": "latest",
-    "PNPM_HOME": "/pnpm",
-    "PROJECT_NAME": "claude-devcontainer",
-    "npm_config_store_dir": "/workspace/.pnpm-store",
-    "npm_config_virtual_store_dir": ".pnpm-store/container/${localWorkspaceFolderBasename}"
-  },
-  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
-  "workspaceFolder": "/workspace",
-  "postCreateCommand": "/usr/local/bin/post-create.sh"
+  }
 }

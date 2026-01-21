@@ -19,7 +19,7 @@
     "claude-devcontainer": {
       "source": {
         "source": "directory",
-        "path": "/workspace"
+        "path": "/workspaces/main-agent-1"
       }
     }
   }
