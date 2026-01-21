@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# devpod-cd: Output the local folder path for a DevPod workspace
+#
+# Usage:
+#   cd "$(devpod-cd <workspace-name>)"
+#
+# Examples:
+#   cd "$(devpod-cd main-agent-1)"
+#   devpod-cd main-agent-1  # just prints the path
+
+set -euo pipefail
+
+usage() {
+    cat >&2 <<EOF
+Usage: devpod-cd <workspace-name>
+
+Output the local folder path for a DevPod workspace.
+
+Examples:
+  cd "\$(devpod-cd main-agent-1)"
+  devpod-cd main-agent-1
+EOF
+    exit 1
+}
+
+# Check for help or missing args
+if [[ $# -eq 0 ]] || [[ "$1" == "-h" ]] || [[ "$1" == "--help" ]]; then
+    usage
+fi
+
+WORKSPACE="$1"
+
+# Check if devpod is installed
+if ! command -v devpod &>/dev/null; then
+    echo "Error: devpod CLI is not installed" >&2
+    exit 1
+fi
+
+# Check if jq is installed
+if ! command -v jq &>/dev/null; then
+    echo "Error: jq is not installed" >&2
+    exit 1
+fi
+
+# Get the local folder path
+PATH_RESULT=$(devpod list --output json 2>/dev/null | jq -r --arg ws "$WORKSPACE" '.[] | select(.id == $ws) | .source.localFolder // empty')
+
+if [[ -z "$PATH_RESULT" ]]; then
+    # Check if workspace exists but is git-based
+    GIT_REPO=$(devpod list --output json 2>/dev/null | jq -r --arg ws "$WORKSPACE" '.[] | select(.id == $ws) | .source.gitRepository // empty')
+
+    if [[ -n "$GIT_REPO" ]]; then
+        echo "Error: Workspace '$WORKSPACE' is git-based (no local folder)" >&2
+        echo "Repository: $GIT_REPO" >&2
+        exit 1
+    else
+        echo "Error: Workspace '$WORKSPACE' not found" >&2
+        echo "Available workspaces:" >&2
+        devpod list 2>/dev/null | tail -n +2 >&2 || true
+        exit 1
+    fi
+fi
+
+echo "$PATH_RESULT"
