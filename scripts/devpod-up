@@ -36,6 +36,7 @@ LOCAL_BUILD=false
 LOCAL_IMAGE="claude-devcontainer:local"
 FALLBACK_IMAGE="ghcr.io/zookanalytics/claude-devcontainer:latest"
 NO_IDE=false
+USE_GIT_REMOTE=false
 
 usage() {
     cat <<EOF
@@ -49,6 +50,7 @@ Claude DevContainer environment with firewall, credentials, and tools.
 Options:
   --local         Build and use local Docker image instead of remote
   --no-ide        Start without opening an IDE
+  --git           Use git remote URL instead of local checkout (fresh clone)
 
 Arguments:
   instance-id     Short instance name (e.g., agent-1, dev)
@@ -70,6 +72,9 @@ Examples:
 
   devpod-up explore https://github.com/expressjs/express
   # Uses fallback image for third-party repo (no devcontainer.json needed)
+
+  devpod-up --git agent-1
+  # Uses git remote URL of current directory (fresh clone, not local mount)
 EOF
     exit 1
 }
@@ -93,6 +98,10 @@ while [[ $# -gt 0 && "$1" == --* ]]; do
             ;;
         --no-ide)
             NO_IDE=true
+            shift
+            ;;
+        --git)
+            USE_GIT_REMOTE=true
             shift
             ;;
         --help)
@@ -124,6 +133,31 @@ if [[ $# -gt 0 && ! "$1" =~ ^- ]]; then
     shift
 fi
 
+# If --git flag is used, resolve local path to git remote URL
+if [[ "$USE_GIT_REMOTE" == true ]]; then
+    # Determine the directory to check for git remote
+    if [[ "$REPO" == "." ]]; then
+        GIT_DIR="$PWD"
+    elif [[ -d "$REPO" ]]; then
+        GIT_DIR="$REPO"
+    else
+        echo -e "${RED}Error: --git requires a local directory, got: $REPO${NC}"
+        exit 1
+    fi
+
+    # Get the git remote URL
+    GIT_REMOTE=$(git -C "$GIT_DIR" remote get-url origin 2>/dev/null) || {
+        echo -e "${RED}Error: No git remote 'origin' found in $GIT_DIR${NC}"
+        echo "Make sure you're in a git repository with a remote configured."
+        exit 1
+    }
+
+    echo -e "${BLUE}Using git remote instead of local checkout${NC}"
+    echo -e "  Remote: $GIT_REMOTE"
+    echo ""
+    REPO="$GIT_REMOTE"
+fi
+
 # Extract repo name for prefixing and detect if remote
 IS_REMOTE=false
 if [[ "$REPO" == "." ]]; then
@@ -149,20 +183,11 @@ export DEVPOD_WORKSPACE_ID="$WORKSPACE_ID"
 
 # Check if DevPod workspace already exists
 if devpod list --output json 2>/dev/null | grep -q "\"id\":\"$WORKSPACE_ID\""; then
-    if [[ "$LOCAL_BUILD" == true ]]; then
-        echo -e "${YELLOW}Workspace '$WORKSPACE_ID' exists. Delete and recreate to use local image.${NC}"
-        echo "  devpod delete $WORKSPACE_ID && ./scripts/devpod-up --local $SHORT_ID"
-        echo ""
-        echo -e "${YELLOW}Starting existing workspace...${NC}"
-    else
-        echo -e "${YELLOW}Starting existing workspace: $WORKSPACE_ID${NC}"
-    fi
+    echo -e "${RED}Error: Workspace '$WORKSPACE_ID' already exists${NC}"
     echo ""
-    EXISTING_ARGS=("$WORKSPACE_ID")
-    if [[ "$NO_IDE" == true ]]; then
-        EXISTING_ARGS+=(--ide none)
-    fi
-    exec devpod up "${EXISTING_ARGS[@]}" "$@"
+    echo "To start it:  devpod up $WORKSPACE_ID"
+    echo "To delete it: devpod delete $WORKSPACE_ID"
+    exit 1
 fi
 
 # Check if Docker container with that name already exists (orphaned from deleted workspace)
