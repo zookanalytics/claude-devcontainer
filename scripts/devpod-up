@@ -10,6 +10,7 @@
 # Usage:
 #   devpod-up <instance-id> [repo] [options...]
 #   devpod-up --local <instance-id> [repo] [options...]
+#   devpod-up --pull <instance-id> [repo] [options...]
 #
 # Examples:
 #   devpod-up agent-1 https://github.com/user/myrepo
@@ -17,6 +18,9 @@
 #
 #   devpod-up --local agent-1
 #   # Builds local image first, then creates workspace
+#
+#   devpod-up --pull agent-1
+#   # Pulls fresh remote image (invalidates Docker cache)
 #
 # The full workspace ID becomes: <repo-name>-<instance-id>
 
@@ -37,6 +41,7 @@ LOCAL_IMAGE="claude-devcontainer:local"
 FALLBACK_IMAGE="ghcr.io/zookanalytics/claude-devcontainer:latest"
 NO_IDE=false
 USE_GIT_REMOTE=false
+PULL_FRESH=false
 
 usage() {
     cat <<EOF
@@ -51,6 +56,7 @@ Options:
   --local         Build and use local Docker image instead of remote
   --no-ide        Start without opening an IDE
   --git           Use git remote URL instead of local checkout (fresh clone)
+  --pull          Pull fresh remote image (invalidates Docker cache)
 
 Arguments:
   instance-id     Short instance name (e.g., agent-1, dev)
@@ -75,6 +81,9 @@ Examples:
 
   devpod-up --git agent-1
   # Uses git remote URL of current directory (fresh clone, not local mount)
+
+  devpod-up --pull agent-1 https://github.com/user/repo
+  # Pulls latest remote image before creating workspace
 EOF
     exit 1
 }
@@ -102,6 +111,10 @@ while [[ $# -gt 0 && "$1" == --* ]]; do
             ;;
         --git)
             USE_GIT_REMOTE=true
+            shift
+            ;;
+        --pull)
+            PULL_FRESH=true
             shift
             ;;
         --help)
@@ -210,12 +223,21 @@ if [[ "$LOCAL_BUILD" == true ]]; then
     echo ""
 fi
 
+# Pull fresh remote image if requested (skip if using local build)
+if [[ "$PULL_FRESH" == true && "$LOCAL_BUILD" == false ]]; then
+    echo -e "${BLUE}Pulling fresh remote image (invalidating cache)...${NC}"
+    docker pull "$FALLBACK_IMAGE"
+    echo ""
+fi
+
 echo -e "${GREEN}Creating DevPod workspace${NC}"
 echo -e "  Repo:      $REPO_NAME"
 echo -e "  Instance:  $SHORT_ID"
 echo -e "  Workspace: $WORKSPACE_ID (also container name)"
 if [[ "$LOCAL_BUILD" == true ]]; then
     echo -e "  Image:     $LOCAL_IMAGE (local build)"
+elif [[ "$PULL_FRESH" == true ]]; then
+    echo -e "  Image:     $FALLBACK_IMAGE (freshly pulled)"
 fi
 if [[ "$IS_REMOTE" == true ]]; then
     echo -e "  Source:    remote (uses repo's devcontainer.json if present, else fallback image)"
