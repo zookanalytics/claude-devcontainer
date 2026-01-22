@@ -2,6 +2,17 @@
   "permissions": {
     "defaultMode": "bypassPermissions"
   },
+  "extraKnownMarketplaces": {
+    "claude-devcontainer": {
+      "source": {
+        "source": "git",
+        "url": "git@github.com:zookanalytics/claude-devcontainer.git"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "git-workflow@claude-devcontainer": true
+  },
   "hooks": {
     "PreToolUse": [
       {
