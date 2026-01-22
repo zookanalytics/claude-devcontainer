@@ -8,7 +8,9 @@ registry.npmjs.org
 # Node.js
 nodejs.org
 
-# Anthropic API (Claude Code)
+# Anthropic (Claude Code)
+claude.ai
+code.claude.com
 api.anthropic.com
 statsig.anthropic.com
 

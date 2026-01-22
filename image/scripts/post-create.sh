@@ -69,24 +69,42 @@ echo "[4/9] Fixing node_modules ownership..."
 sudo /usr/local/bin/fix-node-modules-ownership.sh
 echo "✓ Node modules ownership fixed"
 
-# Step 5: Install global pnpm packages
+# Step 5: Install CLI tools
 echo ""
-echo "[5/9] Installing global pnpm packages..."
+echo "[5/9] Installing CLI tools..."
 
-# Configure global pnpm to allow build scripts for native dependencies
-pnpm config set -g --json onlyBuiltDependencies '["@clerk/shared","@tailwindcss/oxide","cbor-extract","esbuild","ffmpeg-static","sharp","node-pty","protobufjs","tree-sitter-bash"]'
+# Install Claude Code via official installer (https://claude.ai/install.sh)
+# Security note: Piping to bash is the official install method. The script is served
+# over HTTPS from Anthropic's domain. For additional security, you could download,
+# inspect, and run manually, but this would break automated container builds.
+# CLAUDE_CODE_VERSION can be: empty (latest), "stable", or specific version like "1.0.58"
+CLAUDE_CODE_VERSION="${CLAUDE_CODE_VERSION:-}"
+if [ -n "$CLAUDE_CODE_VERSION" ]; then
+  echo "  - Installing Claude Code (version: $CLAUDE_CODE_VERSION)..."
+  if ! curl -fsSL https://claude.ai/install.sh | bash -s "$CLAUDE_CODE_VERSION"; then
+    echo "  ⚠ Claude Code installation failed for version: $CLAUDE_CODE_VERSION"
+    echo "  Check https://claude.ai/install.sh for valid versions"
+  fi
+else
+  echo "  - Installing Claude Code (latest)..."
+  if ! curl -fsSL https://claude.ai/install.sh | bash; then
+    echo "  ⚠ Claude Code installation failed"
+  fi
+fi
 
-# Read CLI versions from environment (default to latest)
-CLAUDE_CODE_VERSION="${CLAUDE_CODE_VERSION:-latest}"
+# Verify Claude Code installation
+if command -v claude >/dev/null 2>&1; then
+  echo "  ✓ Claude Code installed: $(claude --version 2>/dev/null || echo 'version unknown')"
+else
+  echo "  ⚠ Claude Code binary not found in PATH after installation"
+fi
+
+# Install Gemini CLI via pnpm
 GEMINI_CLI_VERSION="${GEMINI_CLI_VERSION:-latest}"
-
-echo "  - Installing @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}..."
-pnpm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
-
 echo "  - Installing @google/gemini-cli@${GEMINI_CLI_VERSION}..."
 pnpm install -g "@google/gemini-cli@${GEMINI_CLI_VERSION}"
 
-echo "✓ Global packages installed"
+echo "✓ CLI tools installed"
 
 # Step 6: Start dnsmasq for DNS logging
 echo ""

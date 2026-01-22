@@ -208,7 +208,6 @@ LABEL devcontainer.metadata='[ \
     ], \
     "containerEnv": { \
       "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1", \
-      "CLAUDE_CODE_VERSION": "latest", \
       "CLAUDE_CONFIG_DIR": "/home/node/.claude", \
       "GEMINI_CLI_VERSION": "latest", \
       "SHARED_DATA_DIR": "/shared-data", \
