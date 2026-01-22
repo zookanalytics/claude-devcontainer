@@ -42,6 +42,8 @@ FALLBACK_IMAGE="ghcr.io/zookanalytics/claude-devcontainer:latest"
 NO_IDE=false
 USE_GIT_REMOTE=false
 PULL_FRESH=false
+USE_DEVPOD_CONFIG=false
+DEVPOD_REPOS_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/devpod-up/repos"
 
 usage() {
     cat <<EOF
@@ -57,6 +59,11 @@ Options:
   --no-ide        Start without opening an IDE
   --git           Use git remote URL instead of local checkout (fresh clone)
   --pull          Pull fresh remote image (invalidates Docker cache)
+  --devpod-config Use .devcontainer/devpod/devcontainer.json from repo
+
+Config file:
+  ~/.config/devpod-up/repos    List of repo patterns (one per line) that
+                               automatically enable --devpod-config
 
 Arguments:
   instance-id     Short instance name (e.g., agent-1, dev)
@@ -115,6 +122,10 @@ while [[ $# -gt 0 && "$1" == --* ]]; do
             ;;
         --pull)
             PULL_FRESH=true
+            shift
+            ;;
+        --devpod-config)
+            USE_DEVPOD_CONFIG=true
             shift
             ;;
         --help)
@@ -188,6 +199,18 @@ else
     REPO_NAME="$(basename "$REPO")"
 fi
 
+# Check if repo matches patterns in config file (auto-enable --devpod-config)
+if [[ "$USE_DEVPOD_CONFIG" == false && -f "$DEVPOD_REPOS_CONFIG" ]]; then
+    while IFS= read -r pattern || [[ -n "$pattern" ]]; do
+        # Skip empty lines and comments
+        [[ -z "$pattern" || "$pattern" == \#* ]] && continue
+        if [[ "$REPO" == *"$pattern"* ]]; then
+            USE_DEVPOD_CONFIG=true
+            break
+        fi
+    done < "$DEVPOD_REPOS_CONFIG"
+fi
+
 # Full workspace ID = repo-instance (globally unique)
 # This becomes both the DevPod workspace ID and Docker container name
 WORKSPACE_ID="${REPO_NAME}-${SHORT_ID}"
@@ -240,7 +263,11 @@ elif [[ "$PULL_FRESH" == true ]]; then
     echo -e "  Image:     $FALLBACK_IMAGE (freshly pulled)"
 fi
 if [[ "$IS_REMOTE" == true ]]; then
-    echo -e "  Source:    remote (uses repo's devcontainer.json if present, else fallback image)"
+    if [[ "$USE_DEVPOD_CONFIG" == true ]]; then
+        echo -e "  Config:    .devcontainer/devpod/devcontainer.json (from cloned repo)"
+    else
+        echo -e "  Source:    remote (fallback image if no devcontainer.json)"
+    fi
 else
     echo -e "  Config:    .devcontainer/devpod/devcontainer.json"
 fi
@@ -253,19 +280,24 @@ DEVPOD_ARGS=("$REPO" --id "$WORKSPACE_ID")
 # This enables using our full environment with any third-party repository
 DEVPOD_ARGS+=(--fallback-image "$FALLBACK_IMAGE")
 
-# For local repos (current dir or local path), use our devcontainer config
-# Remote repos may not have it, so they rely on the fallback image
+# Handle devcontainer.json selection
 # Note: --devcontainer-path expects a path RELATIVE to the repo root
 DEVCONTAINER_CONFIG_ABS="$REPO_ROOT/.devcontainer/devpod/devcontainer.json"
 DEVCONTAINER_CONFIG_REL=".devcontainer/devpod/devcontainer.json"
+
 if [[ "$IS_REMOTE" == false ]]; then
+    # For local repos, use our DevPod-specific config if it exists
     if [[ ! -f "$DEVCONTAINER_CONFIG_ABS" ]]; then
         echo -e "${YELLOW}Warning: devcontainer.json not found at $DEVCONTAINER_CONFIG_ABS${NC}"
         echo -e "${YELLOW}Relying on fallback image configuration${NC}"
     else
         DEVPOD_ARGS+=(--devcontainer-path "$DEVCONTAINER_CONFIG_REL")
     fi
+elif [[ "$USE_DEVPOD_CONFIG" == true ]]; then
+    # Use DevPod-specific config (via --devpod-config flag or config file match)
+    DEVPOD_ARGS+=(--devcontainer-path "$DEVCONTAINER_CONFIG_REL")
 fi
+# For other remote repos, let DevPod auto-discover (uses fallback image if no config found)
 
 # Add local image if requested
 if [[ "$LOCAL_BUILD" == true ]]; then

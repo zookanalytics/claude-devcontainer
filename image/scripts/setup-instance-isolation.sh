@@ -211,21 +211,8 @@ backup_if_not_symlink() {
     # Remove empty directories
     if [ -d "$path" ] && [ -z "$(ls -A "$path" 2>/dev/null)" ]; then
       echo "  Removing empty directory: $path"
-      # Try rmdir first (safe - only removes truly empty directories)
-      local rmdir_err
-      if rmdir_err=$(rmdir "$path" 2>&1); then
-        return
-      fi
-      # If rmdir failed with "busy" (Docker overlay fs issue), fall back to rm -rf
-      # Safe here because: ls -A verified empty, and this runs at container startup
-      # before any user processes could create files in ~/.claude
-      if echo "$rmdir_err" | grep -q "Device or resource busy"; then
-        rm -rf "$path"
-        return
-      fi
-      # Any other error (including "not empty") - propagate it
-      echo "  $rmdir_err" >&2
-      return 1
+      rmdir "$path"
+      return
     fi
     local backup="$path.bak"
     # If .bak exists, use timestamped version
