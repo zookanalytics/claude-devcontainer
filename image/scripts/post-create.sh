@@ -17,13 +17,13 @@ echo "==============================================="
 
 # Step 1: Assemble Claude Code managed settings
 echo ""
-echo "[1/9] Assembling Claude Code managed settings..."
+echo "[1/11] Assembling Claude Code managed settings..."
 sudo /usr/local/bin/assemble-managed-settings.sh
 echo "✓ Managed settings assembled"
 
 # Step 2: DevPod instance isolation (if applicable)
 echo ""
-echo "[2/9] Checking for DevPod instance isolation..."
+echo "[2/11] Checking for DevPod instance isolation..."
 
 # Fix shared-data volume permissions if needed (Docker creates volumes as root)
 if [ -n "${SHARED_DATA_DIR:-}" ] && [ -d "$SHARED_DATA_DIR" ] && [ ! -w "$SHARED_DATA_DIR" ]; then
@@ -59,19 +59,19 @@ fi
 
 # Step 3: Check for package updates (daily)
 echo ""
-echo "[3/9] Checking for package updates..."
+echo "[3/11] Checking for package updates..."
 /usr/local/bin/check-daily-updates.sh
 echo "✓ Package update check complete"
 
 # Step 4: Fix node_modules ownership
 echo ""
-echo "[4/9] Fixing node_modules ownership..."
+echo "[4/11] Fixing node_modules ownership..."
 sudo /usr/local/bin/fix-node-modules-ownership.sh
 echo "✓ Node modules ownership fixed"
 
 # Step 5: Install CLI tools
 echo ""
-echo "[5/9] Installing CLI tools..."
+echo "[5/11] Installing CLI tools..."
 
 # Install Claude Code via official installer (https://claude.ai/install.sh)
 # Security note: Piping to bash is the official install method. The script is served
@@ -106,26 +106,41 @@ pnpm install -g "@google/gemini-cli@${GEMINI_CLI_VERSION}"
 
 echo "✓ CLI tools installed"
 
-# Step 6: Start dnsmasq for DNS logging
+# Step 6: Update keystone packages
 echo ""
-echo "[6/9] Starting dnsmasq DNS forwarder..."
+echo "[6/11] Updating keystone packages..."
+/usr/local/bin/update-keystone.sh
+echo "✓ Keystone packages updated"
+
+# Step 7: Start dnsmasq for DNS logging
+echo ""
+echo "[7/11] Starting dnsmasq DNS forwarder..."
 sudo /usr/local/bin/start-dnsmasq.sh
 
-# Step 7: Start ulogd for firewall logging
+# Step 8: Start ulogd for firewall logging
 echo ""
-echo "[7/9] Starting ulogd firewall logger..."
+echo "[8/11] Starting ulogd firewall logger..."
 sudo /usr/local/bin/start-ulogd.sh
 echo "✓ ulogd started"
 
-# Step 8: Initialize firewall
+# Step 9: Initialize firewall
 echo ""
-echo "[8/9] Initializing firewall rules..."
+echo "[9/11] Initializing firewall rules..."
 sudo /usr/local/bin/init-firewall.sh
 echo "✓ Firewall initialized"
 
-# Step 9: Run project-specific post-create if it exists
+# Step 10: Run sanity check
 echo ""
-echo "[9/9] Running project-specific setup..."
+echo "[10/11] Running sanity check..."
+if /usr/local/bin/devcontainer-sanity-check.sh; then
+  echo "✓ Sanity check passed"
+else
+  echo "⚠ Sanity check reported failures (see above) - container continues"
+fi
+
+# Step 11: Run project-specific post-create if it exists
+echo ""
+echo "[11/11] Running project-specific setup..."
 PROJECT_POST_CREATE="$WORKSPACE_ROOT/.devcontainer/post-create-project.sh"
 if [ -f "$PROJECT_POST_CREATE" ]; then
     echo "Running $PROJECT_POST_CREATE..."

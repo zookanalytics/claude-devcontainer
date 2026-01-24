@@ -1,0 +1,129 @@
+$schema: https://raw.githubusercontent.com/mhingston/keystone-cli/main/schemas/workflow.json
+name: bmad-story
+description: "BMAD single-story workflow: dev-story → code-review (gemini) → code-review (claude) → verify → commit"
+
+inputs:
+  story_id:
+    type: string
+    description: "Story ID to process (e.g., '3c-1')"
+  require_approval:
+    type: boolean
+    default: true
+    description: "If true, pause for human approval after commit"
+
+outputs:
+  success: ${{ steps.postCommit.exitCode == 0 }}
+  story_id: ${{ inputs.story_id }}
+
+steps:
+  # Step 1: Develop the story using Claude Code CLI
+  - id: devStory
+    type: shell
+    allowInsecure: true
+    run: |
+      claude -p "/bmad:bmm:workflows:dev-story Run story ${{ inputs.story_id }}" --dangerously-skip-permissions
+    timeout: 900000
+    retry:
+      count: 1
+      backoff: exponential
+      baseDelay: 30000
+
+  # Step 2: Code review with Gemini CLI
+  - id: reviewGemini
+    type: shell
+    needs: [devStory]
+    allowInsecure: true
+    run: |
+      gemini "/bmad:bmm:workflows:code-review Review story ${{ inputs.story_id }}" --yolo
+    timeout: 900000
+    retry:
+      count: 1
+      backoff: exponential
+      baseDelay: 30000
+
+  # Step 3: Code review with Claude CLI (second opinion)
+  - id: reviewClaude
+    type: shell
+    needs: [reviewGemini]
+    allowInsecure: true
+    run: |
+      claude -p "/bmad:bmm:workflows:code-review Review story ${{ inputs.story_id }}" --dangerously-skip-permissions
+    timeout: 900000
+    retry:
+      count: 1
+      backoff: exponential
+      baseDelay: 30000
+
+  # Step 4: Verify tests pass
+  - id: verify
+    type: shell
+    needs: [reviewClaude]
+    allowInsecure: true
+    run: |
+      claude -p "/bmad:bmm:workflows:quick-dev Verify tests pass for story ${{ inputs.story_id }}" --dangerously-skip-permissions
+    timeout: 900000
+    retry:
+      count: 1
+      backoff: exponential
+      baseDelay: 30000
+
+  # Step 5a: Check if there are changes to commit (idempotency)
+  # Use printf to avoid trailing newline that breaks string comparison
+  - id: checkChanges
+    type: shell
+    needs: [verify]
+    run: |
+      if git diff --quiet && git diff --cached --quiet; then
+        printf "no_changes"
+      else
+        printf "has_changes"
+      fi
+
+  # Step 5b: Commit changes (skip if no changes)
+  - id: commit
+    type: shell
+    needs: [checkChanges]
+    if: ${{ steps.checkChanges.output != 'no_changes' }}
+    allowInsecure: true
+    run: |
+      claude -p "/git:commit Commit implementation for story ${{ inputs.story_id }}" --dangerously-skip-permissions
+    timeout: 300000
+    retry:
+      count: 1
+      backoff: exponential
+      baseDelay: 10000
+
+  # Step 5c: Skip commit message (for tracking)
+  - id: skipCommit
+    type: shell
+    needs: [checkChanges]
+    if: ${{ steps.checkChanges.output == 'no_changes' }}
+    run: |
+      echo "No changes to commit - story already complete or no modifications made"
+
+  # Step 5d: Post-commit sync point (waits for whichever commit step runs)
+  # Keystone treats skipped steps as "completed" for dependency purposes
+  - id: postCommit
+    type: shell
+    needs: [commit, skipCommit]
+    allowFailure: true
+    run: |
+      printf "commit_phase_complete"
+
+  # Step 6: Human approval gate (optional)
+  - id: approve
+    type: human
+    needs: [postCommit]
+    if: ${{ inputs.require_approval }}
+    message: |
+      Story ${{ inputs.story_id }} processing complete.
+
+      Steps completed:
+      - devStory: ✓
+      - reviewGemini: ✓
+      - reviewClaude: ✓
+      - verify: ✓
+      - commit: ${{ steps.checkChanges.output == 'no_changes' ? 'skipped (no changes)' : '✓' }}
+
+      Continue to next story?
+    inputType: confirm

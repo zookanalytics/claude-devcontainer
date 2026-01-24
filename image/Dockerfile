@@ -112,6 +112,19 @@ RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/
 # Setup pnpm
 RUN pnpm setup
 
+# Install bun (required for keystone-cli)
+# Must run as node user to install to ~/.bun
+RUN curl -fsSL https://bun.sh/install | bash
+ENV BUN_INSTALL="/home/node/.bun"
+ENV PATH="$BUN_INSTALL/bin:$PATH"
+
+# Install keystone-cli globally via bun (must run as node user for PATH)
+RUN bun install -g github:ZookAnalytics/keystone-cli
+
+# Copy keystone-workflows package and run postinstall to set up symlinks and config
+COPY --chown=node:node packages/keystone-workflows /home/node/.local/lib/keystone-workflows
+RUN /home/node/.local/lib/keystone-workflows/scripts/postinstall.sh
+
 USER root
 
 # Copy configuration files
@@ -136,6 +149,8 @@ COPY image/scripts/setup-instance-isolation.sh /usr/local/bin/
 COPY image/scripts/setup-claude-auth-sharing.sh /usr/local/bin/
 COPY image/scripts/search-history.sh /usr/local/bin/
 COPY image/scripts/fix-shared-data-permissions.sh /usr/local/bin/
+COPY image/scripts/update-keystone.sh /usr/local/bin/
+COPY image/scripts/devcontainer-sanity-check.sh /usr/local/bin/
 
 # Make scripts executable and configure sudo
 RUN chmod 755 /usr/local/bin/init-firewall.sh && \
@@ -154,6 +169,8 @@ RUN chmod 755 /usr/local/bin/init-firewall.sh && \
   chmod 755 /usr/local/bin/setup-claude-auth-sharing.sh && \
   chmod 755 /usr/local/bin/search-history.sh && \
   chmod 755 /usr/local/bin/fix-shared-data-permissions.sh && \
+  chmod 755 /usr/local/bin/update-keystone.sh && \
+  chmod 755 /usr/local/bin/devcontainer-sanity-check.sh && \
   echo "node ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh" > /etc/sudoers.d/node-commands && \
   echo "node ALL=(root) NOPASSWD: /usr/local/bin/assemble-managed-settings.sh" >> /etc/sudoers.d/node-commands && \
   echo "node ALL=(root) NOPASSWD: /usr/local/bin/fix-node-modules-ownership.sh" >> /etc/sudoers.d/node-commands && \
