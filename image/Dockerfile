@@ -25,6 +25,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   nano \
   vim \
   ripgrep \
+  shellcheck \
   locales \
   lsof \
   ulogd2 \
@@ -71,6 +72,15 @@ RUN ARCH=$(dpkg --print-architecture) && \
   wget "https://github.com/dandavison/delta/releases/download/${GIT_DELTA_VERSION}/git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb" && \
   dpkg -i "git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb" && \
   rm "git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb"
+
+# Install actionlint
+ARG ACTIONLINT_VERSION=1.7.10
+RUN ARCH=$(dpkg --print-architecture) && \
+  wget "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_${ARCH}.tar.gz" && \
+  tar -xzf "actionlint_${ACTIONLINT_VERSION}_linux_${ARCH}.tar.gz" -C /usr/local/bin actionlint && \
+  chmod +x /usr/local/bin/actionlint && \
+  rm "actionlint_${ACTIONLINT_VERSION}_linux_${ARCH}.tar.gz" && \
+  actionlint --version
 
 # Install Playwright system dependencies (browsers installed per-project in postCreateCommand)
 RUN pnpm dlx playwright install-deps
