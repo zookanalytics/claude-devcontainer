@@ -1,0 +1,211 @@
+$schema: https://raw.githubusercontent.com/mhingston/keystone-cli/main/schemas/workflow.json
+name: bmad-epic
+description: "BMAD epic iterator (Approach A): Parse sprint-status.yaml and process all stories in an epic"
+
+inputs:
+  epic_id:
+    type: string
+    description: "Epic ID prefix (e.g., '3c')"
+  auto_advance:
+    type: boolean
+    default: true
+    description: "If true, automatically advance through all stories"
+  require_approval:
+    type: boolean
+    default: true
+    description: "If true, require human approval after each story"
+  sprint_status_path:
+    type: string
+    default: "_bmad-output/implementation-artifacts/sprint-status.yaml"
+    description: "Path to sprint-status.yaml file"
+
+outputs:
+  # Note: Shell step output is raw text, not parsed. Results shown in console.
+  result: ${{ steps.processStories.output }}
+
+steps:
+  # Step 1: Parse sprint-status.yaml to extract story IDs for this epic
+  - id: parseStories
+    type: shell
+    allowInsecure: true
+    run: |
+      EPIC_ID="${{ inputs.epic_id }}"
+      SPRINT_STATUS="${{ inputs.sprint_status_path }}"
+
+      if [ ! -f "$SPRINT_STATUS" ]; then
+        echo "Error: Sprint status file not found at $SPRINT_STATUS" >&2
+        exit 1
+      fi
+
+      # Extract story IDs matching the epic prefix using grep (portable, no yq dependency)
+      # Matches lines like "  3c-1-story-name: status" (supports multi-digit story numbers)
+      STORIES=$(grep -E "^  ${EPIC_ID}-[0-9]+" "$SPRINT_STATUS" 2>/dev/null | sed 's/:.*//' | tr -d ' ' | tr '\n' ',' | sed 's/,$//')
+
+      if [ -z "$STORIES" ]; then
+        echo "Error: No stories found for epic $EPIC_ID in $SPRINT_STATUS" >&2
+        exit 1
+      fi
+
+      echo "$STORIES"
+    outputSchema:
+      type: string
+      description: "Comma-separated list of story IDs"
+
+  # Step 2: Confirm before processing
+  - id: confirmStart
+    type: human
+    needs: [parseStories]
+    message: |
+      Ready to process Epic ${{ inputs.epic_id }}
+
+      Stories found:
+      ${{ steps.parseStories.output }}
+
+      Settings:
+      - Auto-advance: ${{ inputs.auto_advance }}
+      - Require approval per story: ${{ inputs.require_approval }}
+
+      Start processing?
+    inputType: confirm
+
+  # Step 3: Process each story using foreach
+  - id: processStories
+    type: shell
+    needs: [confirmStart]
+    allowInsecure: true
+    run: |
+      STORIES="${{ steps.parseStories.output }}"
+      REQUIRE_APPROVAL="${{ inputs.require_approval }}"
+
+      COMPLETED=""
+      FAILED=""
+      TOTAL=0
+
+      # Split comma-separated stories into array
+      IFS=',' read -ra STORY_ARRAY <<< "$STORIES"
+
+      for STORY_ID in "${STORY_ARRAY[@]}"; do
+        TOTAL=$((TOTAL + 1))
+        echo "Processing story: $STORY_ID"
+
+        # Run the bmad-story workflow for this story
+        if keystone run bmad-story -i story_id="$STORY_ID" -i require_approval="$REQUIRE_APPROVAL"; then
+          COMPLETED="$COMPLETED$STORY_ID,"
+          echo "✓ Story $STORY_ID completed"
+        else
+          FAILED="$FAILED$STORY_ID,"
+          echo "✗ Story $STORY_ID failed"
+
+          # If not auto-advancing, stop on failure
+          if [ "${{ inputs.auto_advance }}" != "true" ]; then
+            echo "Stopping due to failure (auto_advance=false)"
+            break
+          fi
+        fi
+      done
+
+      # Output results summary (shell output is raw text, not parsed as JSON)
+      echo ""
+      echo "═══════════════════════════════════════"
+      echo "EPIC PROCESSING COMPLETE"
+      echo "═══════════════════════════════════════"
+      echo "Total: $TOTAL"
+      echo "Completed: ${COMPLETED%,}"
+      echo "Failed: ${FAILED%,}"
+      echo "═══════════════════════════════════════"
+    timeout: 14400000  # 4 hours for full epic
+
+  # Step 4: Summary
+  - id: summary
+    type: human
+    needs: [processStories]
+    message: |
+      Epic ${{ inputs.epic_id }} Processing Complete
+
+      Results are shown in the processStories output above.
+
+      Review results and continue to completion checks?
+    inputType: confirm
+
+  # Step 5: Retrospective
+  - id: retrospective
+    type: agent
+    needs: [summary]
+    prompt: |
+      Run the BMAD retrospective workflow for Epic ${{ inputs.epic_id }}.
+
+      Use: /bmad:bmm:workflows:retrospective
+
+      Focus on:
+      - What went well during this epic's implementation
+      - What challenges were encountered
+      - Lessons learned for future epics
+      - Process improvements to consider
+
+      The retrospective output should be saved to:
+      _bmad-output/implementation-artifacts/retrospectives/epic-${{ inputs.epic_id }}-retrospective.md
+    timeout: 1800000  # 30 minutes
+
+  # Step 6: Confirm retrospective complete
+  - id: confirmRetrospective
+    type: human
+    needs: [retrospective]
+    message: |
+      Retrospective for Epic ${{ inputs.epic_id }} complete.
+
+      Review the retrospective and continue to final evaluation?
+    inputType: confirm
+
+  # Step 7: Final Evaluation/Synopsis
+  - id: evaluation
+    type: agent
+    needs: [confirmRetrospective]
+    prompt: |
+      Perform a final evaluation synopsis for Epic ${{ inputs.epic_id }}.
+
+      ## Evaluation Checklist
+
+      1. **Deliverables Check**
+         - List all files created/modified during this epic
+         - Compare against the epic's planned deliverables
+         - Identify any missing deliverables
+
+      2. **Deviation Analysis**
+         - Compare implementation against the original tech spec/story definitions
+         - Document any deviations from the plan (intentional or unintentional)
+         - Note any scope changes that occurred
+
+      3. **Quality Gates**
+         - Verify all tests pass
+         - Check for any TODO/FIXME comments left behind
+         - Confirm documentation was updated as needed
+
+      4. **Integration Verification**
+         - Confirm the epic integrates properly with existing code
+         - Check for any breaking changes introduced
+
+      ## Output
+
+      Save the evaluation report to:
+      _bmad-output/implementation-artifacts/evaluations/epic-${{ inputs.epic_id }}-evaluation.md
+
+      Format:
+      - ✅ for passed checks
+      - ⚠️ for items needing attention
+      - ❌ for failed checks
+
+      Include a final PASS/NEEDS_ATTENTION/FAIL status.
+    timeout: 1800000  # 30 minutes
+
+  # Step 8: Final sign-off
+  - id: finalSignoff
+    type: human
+    needs: [evaluation]
+    message: |
+      Epic ${{ inputs.epic_id }} Completion Checks Finished
+
+      Review the evaluation report at:
+      _bmad-output/implementation-artifacts/evaluations/epic-${{ inputs.epic_id }}-evaluation.md
+
+      Mark epic as complete?
+    inputType: confirm

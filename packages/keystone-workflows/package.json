@@ -1,0 +1,25 @@
+{
+  "name": "@zookanalytics/keystone-workflows",
+  "version": "0.1.0",
+  "description": "BMAD keystone workflows for claude-devcontainer",
+  "files": [
+    "workflows/",
+    "config/",
+    "scripts/"
+  ],
+  "scripts": {
+    "postinstall": "./scripts/postinstall.sh"
+  },
+  "keywords": [
+    "keystone",
+    "bmad",
+    "workflows",
+    "claude-devcontainer"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zookanalytics/claude-devcontainer.git",
+    "directory": "packages/keystone-workflows"
+  }
+}
