@@ -21,9 +21,9 @@ echo "[1/11] Assembling Claude Code managed settings..."
 sudo /usr/local/bin/assemble-managed-settings.sh
 echo "✓ Managed settings assembled"
 
-# Step 2: DevPod instance isolation (if applicable)
+# Step 2: Instance isolation (if applicable)
 echo ""
-echo "[2/11] Checking for DevPod instance isolation..."
+echo "[2/11] Checking for instance isolation..."
 
 # Fix shared-data volume permissions if needed (Docker creates volumes as root)
 if [ -n "${SHARED_DATA_DIR:-}" ] && [ -d "$SHARED_DATA_DIR" ] && [ ! -w "$SHARED_DATA_DIR" ]; then
@@ -31,30 +31,27 @@ if [ -n "${SHARED_DATA_DIR:-}" ] && [ -d "$SHARED_DATA_DIR" ] && [ ! -w "$SHARED
   sudo /usr/local/bin/fix-shared-data-permissions.sh
 fi
 
-# DevPod mode detection - ALL conditions must be true:
+# Isolation mode detection - ALL conditions must be true:
 # a. SHARED_DATA_DIR environment variable is set AND non-empty
-# b. DEVPOD_WORKSPACE_ID environment variable is set AND non-empty
-# c. Directory $SHARED_DATA_DIR exists and is writable
-DEVPOD_MODE=false
+# b. Directory $SHARED_DATA_DIR exists and is writable
+ISOLATION_MODE=false
 
 if [ -z "${SHARED_DATA_DIR:-}" ]; then
   echo "  SHARED_DATA_DIR not set (VS Code mode or no shared volume)"
-elif [ -z "${DEVPOD_WORKSPACE_ID:-}" ]; then
-  echo "  DEVPOD_WORKSPACE_ID not set (not a DevPod workspace)"
 elif [ ! -d "$SHARED_DATA_DIR" ]; then
   echo "  $SHARED_DATA_DIR directory does not exist"
 elif [ ! -w "$SHARED_DATA_DIR" ]; then
   echo "  $SHARED_DATA_DIR is not writable"
 else
-  DEVPOD_MODE=true
+  ISOLATION_MODE=true
 fi
 
-if [ "$DEVPOD_MODE" = true ]; then
-  echo "  DevPod mode detected, running instance isolation..."
+if [ "$ISOLATION_MODE" = true ]; then
+  echo "  Isolation mode detected, running instance isolation..."
   /usr/local/bin/setup-instance-isolation.sh
   echo "✓ Instance isolation complete"
 else
-  echo "  Skipping instance isolation (not in DevPod mode)"
+  echo "  Skipping instance isolation (not in proper DevContainer)"
 fi
 
 # Step 3: Check for package updates (daily)
