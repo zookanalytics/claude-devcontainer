@@ -129,22 +129,12 @@ steps:
 
   # Step 5: Retrospective
   - id: retrospective
-    type: agent
+    type: shell
     needs: [summary]
-    prompt: |
-      Run the BMAD retrospective workflow for Epic ${{ inputs.epic_id }}.
-
-      Use: /bmad:bmm:workflows:retrospective
-
-      Focus on:
-      - What went well during this epic's implementation
-      - What challenges were encountered
-      - Lessons learned for future epics
-      - Process improvements to consider
-
-      The retrospective output should be saved to:
-      _bmad-output/implementation-artifacts/retrospectives/epic-${{ inputs.epic_id }}-retrospective.md
-    timeout: 1800000  # 30 minutes
+    allowInsecure: true
+    run: |
+      claude -p "/bmad:bmm:workflows:retrospective Run retrospective for Epic ${{ inputs.epic_id }}" --dangerously-skip-permissions
+    timeout: 1800000
 
   # Step 6: Confirm retrospective complete
   - id: confirmRetrospective
@@ -158,44 +148,12 @@ steps:
 
   # Step 7: Final Evaluation/Synopsis
   - id: evaluation
-    type: agent
+    type: shell
     needs: [confirmRetrospective]
-    prompt: |
-      Perform a final evaluation synopsis for Epic ${{ inputs.epic_id }}.
-
-      ## Evaluation Checklist
-
-      1. **Deliverables Check**
-         - List all files created/modified during this epic
-         - Compare against the epic's planned deliverables
-         - Identify any missing deliverables
-
-      2. **Deviation Analysis**
-         - Compare implementation against the original tech spec/story definitions
-         - Document any deviations from the plan (intentional or unintentional)
-         - Note any scope changes that occurred
-
-      3. **Quality Gates**
-         - Verify all tests pass
-         - Check for any TODO/FIXME comments left behind
-         - Confirm documentation was updated as needed
-
-      4. **Integration Verification**
-         - Confirm the epic integrates properly with existing code
-         - Check for any breaking changes introduced
-
-      ## Output
-
-      Save the evaluation report to:
-      _bmad-output/implementation-artifacts/evaluations/epic-${{ inputs.epic_id }}-evaluation.md
-
-      Format:
-      - ✅ for passed checks
-      - ⚠️ for items needing attention
-      - ❌ for failed checks
-
-      Include a final PASS/NEEDS_ATTENTION/FAIL status.
-    timeout: 1800000  # 30 minutes
+    allowInsecure: true
+    run: |
+      claude -p "Perform final evaluation synopsis for Epic ${{ inputs.epic_id }}. Checklist: 1) Deliverables Check - list files created/modified, compare against planned deliverables, identify missing items. 2) Deviation Analysis - compare implementation vs tech spec, document deviations and scope changes. 3) Quality Gates - verify tests pass, check for TODO/FIXME comments, confirm docs updated. 4) Integration Verification - confirm proper integration, check for breaking changes. Save report to _bmad-output/implementation-artifacts/evaluations/epic-${{ inputs.epic_id }}-evaluation.md with ✅/⚠️/❌ format and final PASS/NEEDS_ATTENTION/FAIL status." --dangerously-skip-permissions
+    timeout: 1800000
 
   # Step 8: Final sign-off
   - id: finalSignoff
