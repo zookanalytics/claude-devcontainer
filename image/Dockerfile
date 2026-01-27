@@ -63,8 +63,10 @@ RUN SNIPPET="export PROMPT_COMMAND='history -a' && export HISTFILE=/commandhisto
 # Set DEVCONTAINER environment variable
 ENV DEVCONTAINER=true
 
-# Default working directory (DevPod overrides this to /workspaces/<id>)
-WORKDIR /home/node
+RUN mkdir -p /workspaces && \
+  chown -R node:node /workspaces
+
+WORKDIR /workspaces
 
 # Install git-delta
 ARG GIT_DELTA_VERSION=0.18.2
@@ -221,42 +223,5 @@ COPY packages/bmad-orchestrator/scripts/ /usr/local/lib/bmad/
 RUN chmod 755 /usr/local/bin/claude-instance && \
   ln -s /usr/local/lib/bmad/bmad-cli /usr/local/bin/bmad-cli && \
   chmod 755 /usr/local/lib/bmad/bmad-cli
-
-# DevContainer metadata for fallback image support
-# This enables: devpod up <any-repo> --fallback-image ghcr.io/zookanalytics/claude-devcontainer:latest
-LABEL devcontainer.metadata='[ \
-  { \
-    "remoteUser": "node", \
-    "containerUser": "node", \
-    "capAdd": ["NET_ADMIN", "NET_RAW", "SYSLOG"], \
-    "mounts": [ \
-      "source=claude-devcontainer-shared-data,target=/shared-data,type=volume", \
-      "source=pnpm-store,target=/workspaces/.pnpm-store,type=volume" \
-    ], \
-    "containerEnv": { \
-      "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1", \
-      "CLAUDE_CONFIG_DIR": "/home/node/.claude", \
-      "GEMINI_CLI_VERSION": "latest", \
-      "SHARED_DATA_DIR": "/shared-data", \
-      "PNPM_HOME": "/pnpm", \
-      "npm_config_store_dir": "/workspaces/.pnpm-store" \
-    }, \
-    "postCreateCommand": "/usr/local/bin/post-create.sh", \
-    "customizations": { \
-      "vscode": { \
-        "settings": { \
-          "terminal.integrated.defaultProfile.linux": "zsh" \
-        }, \
-        "extensions": [ \
-          "Anthropic.claude-code", \
-          "google.gemini-cli-vscode-ide-companion", \
-          "eamodio.gitlens", \
-          "esbenp.prettier-vscode", \
-          "dbaeumer.vscode-eslint" \
-        ] \
-      } \
-    } \
-  } \
-]'
 
 USER node
