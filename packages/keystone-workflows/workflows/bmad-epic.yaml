@@ -1,15 +1,11 @@
 $schema: https://raw.githubusercontent.com/mhingston/keystone-cli/main/schemas/workflow.json
 name: bmad-epic
-description: "BMAD epic iterator (Approach A): Parse sprint-status.yaml and process all stories in an epic"
+description: "BMAD epic iterator: Parse sprint-status.yaml and process all stories in an epic using native foreach"
 
 inputs:
   epic_id:
     type: string
-    description: "Epic ID prefix (e.g., '3c')"
-  auto_advance:
-    type: boolean
-    default: true
-    description: "If true, automatically advance through all stories"
+    description: "Epic ID prefix (e.g., 'env-1')"
   require_approval:
     type: boolean
     default: true
@@ -20,11 +16,10 @@ inputs:
     description: "Path to sprint-status.yaml file"
 
 outputs:
-  # Note: Shell step output is raw text, not parsed. Results shown in console.
-  result: ${{ steps.processStories.output }}
+  result: ${{ steps.summary.output }}
 
 steps:
-  # Step 1: Parse sprint-status.yaml to extract story IDs for this epic
+  # Step 1: Parse sprint-status.yaml and output JSON array using shell
   - id: parseStories
     type: shell
     allowInsecure: true
@@ -37,103 +32,88 @@ steps:
         exit 1
       fi
 
-      # Extract story IDs matching the epic prefix using grep (portable, no yq dependency)
-      # Matches lines like "  3c-1-story-name: status" (supports multi-digit story numbers)
-      STORIES=$(grep -E "^  ${EPIC_ID}-[0-9]+" "$SPRINT_STATUS" 2>/dev/null | sed 's/:.*//' | tr -d ' ' | tr '\n' ',' | sed 's/,$//')
+      # Extract story IDs and write to temp file for script to read
+      STORIES=$(grep -E "^  ${EPIC_ID}-[0-9]+" "$SPRINT_STATUS" 2>/dev/null | sed 's/:.*//' | tr -d ' ')
 
       if [ -z "$STORIES" ]; then
         echo "Error: No stories found for epic $EPIC_ID in $SPRINT_STATUS" >&2
         exit 1
       fi
 
-      echo "$STORIES"
-    outputSchema:
-      type: string
-      description: "Comma-separated list of story IDs"
+      # Write as JSON array to well-known temp file
+      TMPFILE="/tmp/keystone-epic-stories.json"
+      printf '[' > "$TMPFILE"
+      FIRST=true
+      printf '%s\n' "$STORIES" | while IFS= read -r story; do
+        if [ "$FIRST" = "true" ]; then
+          FIRST=false
+        else
+          printf ',' >> "$TMPFILE"
+        fi
+        printf '"%s"' "$story" >> "$TMPFILE"
+      done
+      printf ']' >> "$TMPFILE"
 
-  # Step 2: Confirm before processing
+      # Output the temp file path
+      printf '%s' "$TMPFILE"
+
+  # Step 2: Read the JSON and return as array
+  - id: loadStories
+    type: script
+    allowInsecure: true
+    needs: [parseStories]
+    run: |
+      const tmpFile = "/tmp/keystone-epic-stories.json";
+      const content = require("fs").readFileSync(tmpFile, "utf8");
+      require("fs").unlinkSync(tmpFile);
+      return JSON.parse(content);
+
+  # Step 3: Confirm before processing
   - id: confirmStart
     type: human
-    needs: [parseStories]
+    needs: [loadStories]
     message: |
       Ready to process Epic ${{ inputs.epic_id }}
 
-      Stories found:
-      ${{ steps.parseStories.output }}
+      Stories to process:
+      ${{ steps.loadStories.output }}
 
       Settings:
-      - Auto-advance: ${{ inputs.auto_advance }}
       - Require approval per story: ${{ inputs.require_approval }}
 
       Start processing?
     inputType: confirm
 
-  # Step 3: Process each story using foreach
-  - id: processStories
-    type: shell
+  # Step 4: Process each story using native foreach (sequential)
+  - id: processStory
+    type: workflow
     needs: [confirmStart]
-    allowInsecure: true
-    run: |
-      STORIES="${{ steps.parseStories.output }}"
-      REQUIRE_APPROVAL="${{ inputs.require_approval }}"
-
-      COMPLETED=""
-      FAILED=""
-      TOTAL=0
-
-      # Split comma-separated stories into array
-      IFS=',' read -ra STORY_ARRAY <<< "$STORIES"
-
-      for STORY_ID in "${STORY_ARRAY[@]}"; do
-        TOTAL=$((TOTAL + 1))
-        echo "Processing story: $STORY_ID"
-
-        # Run the bmad-story workflow for this story
-        if keystone run bmad-story -i story_id="$STORY_ID" -i require_approval="$REQUIRE_APPROVAL"; then
-          COMPLETED="$COMPLETED$STORY_ID,"
-          echo "✓ Story $STORY_ID completed"
-        else
-          FAILED="$FAILED$STORY_ID,"
-          echo "✗ Story $STORY_ID failed"
-
-          # If not auto-advancing, stop on failure
-          if [ "${{ inputs.auto_advance }}" != "true" ]; then
-            echo "Stopping due to failure (auto_advance=false)"
-            break
-          fi
-        fi
-      done
-
-      # Output results summary (shell output is raw text, not parsed as JSON)
-      echo ""
-      echo "═══════════════════════════════════════"
-      echo "EPIC PROCESSING COMPLETE"
-      echo "═══════════════════════════════════════"
-      echo "Total: $TOTAL"
-      echo "Completed: ${COMPLETED%,}"
-      echo "Failed: ${FAILED%,}"
-      echo "═══════════════════════════════════════"
-    timeout: 14400000  # 4 hours for full epic
+    foreach: ${{ steps.loadStories.output }}
+    concurrency: 1
+    path: bmad-story.yaml
+    inputs:
+      story_id: ${{ item }}
+      require_approval: ${{ inputs.require_approval }}
 
   # Step 4: Summary
   - id: summary
     type: human
-    needs: [processStories]
+    needs: [processStory]
     message: |
       Epic ${{ inputs.epic_id }} Processing Complete
 
-      Results are shown in the processStories output above.
+      All stories have been processed.
 
       Review results and continue to completion checks?
     inputType: confirm
 
-  # Step 5: Retrospective
+  # Step 5: Retrospective (interactive - no -p flag)
   - id: retrospective
     type: shell
     needs: [summary]
     allowInsecure: true
     run: |
-      claude -p "/bmad:bmm:workflows:retrospective Run retrospective for Epic ${{ inputs.epic_id }}" --dangerously-skip-permissions
+      claude "/bmad:bmm:workflows:retrospective - Run retrospective for Epic ${{ inputs.epic_id }}."
     timeout: 1800000
 
   # Step 6: Confirm retrospective complete
@@ -152,7 +132,7 @@ steps:
     needs: [confirmRetrospective]
     allowInsecure: true
     run: |
-      claude -p "Perform final evaluation synopsis for Epic ${{ inputs.epic_id }}. Checklist: 1) Deliverables Check - list files created/modified, compare against planned deliverables, identify missing items. 2) Deviation Analysis - compare implementation vs tech spec, document deviations and scope changes. 3) Quality Gates - verify tests pass, check for TODO/FIXME comments, confirm docs updated. 4) Integration Verification - confirm proper integration, check for breaking changes. Save report to _bmad-output/implementation-artifacts/evaluations/epic-${{ inputs.epic_id }}-evaluation.md with ✅/⚠️/❌ format and final PASS/NEEDS_ATTENTION/FAIL status." --dangerously-skip-permissions
+      claude -p "Perform final evaluation synopsis for Epic ${{ inputs.epic_id }}. Do not ask questions. Checklist: 1) Deliverables Check - list files created/modified, compare against planned deliverables, identify missing items. 2) Deviation Analysis - compare implementation vs tech spec, document deviations and scope changes. 3) Quality Gates - verify tests pass, check for TODO/FIXME comments, confirm docs updated. 4) Integration Verification - confirm proper integration, check for breaking changes. Save report to _bmad-output/implementation-artifacts/evaluations/epic-${{ inputs.epic_id }}-evaluation.md with ✅/⚠️/❌ format and final PASS/NEEDS_ATTENTION/FAIL status." --dangerously-skip-permissions
     timeout: 1800000
 
   # Step 8: Final sign-off
