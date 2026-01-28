@@ -1,5 +1,9 @@
 # Keystone Configuration
 # Default configuration for BMAD workflows in claude-devcontainer
+
+logging:
+  suppress_security_warning: true
+
 default_provider: openai
 
 providers:

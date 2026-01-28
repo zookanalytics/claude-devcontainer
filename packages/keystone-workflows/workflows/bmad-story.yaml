@@ -6,10 +6,6 @@ inputs:
   story_id:
     type: string
     description: "Story ID to process (e.g., '3c-1')"
-  require_approval:
-    type: boolean
-    default: true
-    description: "If true, pause for human approval after commit"
 
 outputs:
   success: ${{ steps.postCommit.exitCode == 0 }}
@@ -18,7 +14,7 @@ outputs:
   commit_state: ${{ steps.postCommit.output }}
 
 steps:
-  # Step 0: Pre-flight check - record initial git state
+  # Step 1: Pre-flight check - record initial git state
   - id: preflight
     type: shell
     allowInsecure: true
@@ -34,7 +30,7 @@ steps:
         printf "clean:0"
       fi
 
-  # Step 1: Develop the story using Claude Code CLI
+  # Step 2: Develop the story using Claude Code CLI
   - id: devStory
     needs: [preflight]
     type: shell
@@ -47,7 +43,7 @@ steps:
       backoff: exponential
       baseDelay: 30000
 
-  # Step 2: Code review with Gemini CLI
+  # Step 3: Code review with Gemini CLI
   - id: reviewGemini
     type: shell
     needs: [devStory]
@@ -60,7 +56,7 @@ steps:
       backoff: exponential
       baseDelay: 30000
 
-  # Step 3: Code review with Claude CLI (second opinion)
+  # Step 4: Code review with Claude CLI (second opinion)
   - id: reviewClaude
     type: shell
     needs: [reviewGemini]
@@ -73,7 +69,7 @@ steps:
       backoff: exponential
       baseDelay: 30000
 
-  # Step 4: Verify tests pass
+  # Step 5: Verify tests pass
   - id: verify
     type: shell
     needs: [reviewClaude]
@@ -86,8 +82,7 @@ steps:
       backoff: exponential
       baseDelay: 30000
 
-  # Step 5a: Check if there are changes to commit (idempotency)
-  # Use printf to avoid trailing newline that breaks string comparison
+  # Step 6: Check if there are changes to commit (idempotency)
   - id: checkChanges
     type: shell
     needs: [verify]
@@ -99,7 +94,7 @@ steps:
         printf "has_changes"
       fi
 
-  # Step 5b: Commit changes (skip if no changes)
+  # Step 7: Commit changes (skip if no changes)
   - id: commit
     type: shell
     needs: [checkChanges]
@@ -113,21 +108,19 @@ steps:
       backoff: exponential
       baseDelay: 10000
 
-  # Step 5c: Skip commit message (for tracking)
-  - id: skipCommit
-    type: shell
-    needs: [checkChanges]
-    if: ${{ steps.checkChanges.output == 'no_changes' }}
-    run: |
-      echo "No changes to commit - story already complete or no modifications made"
-
-  # Step 5d: Post-commit verification - ensure all changes are committed
-  # Keystone treats skipped steps as "completed" for dependency purposes
+  # Step 8: Post-commit verification - ensure all changes are committed
   - id: postCommit
     type: shell
-    needs: [commit, skipCommit]
+    needs: [commit]
     allowInsecure: true
     run: |
+      # Handle "no changes" case
+      if [ "${{ steps.checkChanges.output }}" = "no_changes" ]; then
+        echo "ℹ️  No changes to commit - story already complete or no modifications made"
+        printf "ok:no_changes"
+        exit 0
+      fi
+
       # Check for any uncommitted changes after commit
       UNCOMMITTED=$(git status --porcelain 2>/dev/null)
       if [ -n "$UNCOMMITTED" ]; then
@@ -153,24 +146,28 @@ steps:
         printf "ok:clean"
       fi
 
-  # Step 6: Human approval gate (optional)
-  - id: approve
-    type: human
+  # Step 9: Story completion summary
+  - id: summary
+    type: shell
     needs: [postCommit]
-    if: ${{ inputs.require_approval }}
-    message: |
-      Story ${{ inputs.story_id }} processing complete.
-
-      Pre-flight: ${{ steps.preflight.output }}
-
-      Steps completed:
-      - devStory: ✓
-      - reviewGemini: ✓
-      - reviewClaude: ✓
-      - verify: ✓
-      - commit: ${{ steps.checkChanges.output == 'no_changes' ? 'skipped (no changes)' : '✓' }}
-
-      Post-commit: ${{ steps.postCommit.output }}
-
-      Continue to next story?
-    inputType: confirm
+    allowInsecure: true
+    run: |
+      echo "══════════════════════════════════════════════════════════════"
+      echo "Story ${{ inputs.story_id }} processing complete."
+      echo "══════════════════════════════════════════════════════════════"
+      echo ""
+      echo "Pre-flight: ${{ steps.preflight.output }}"
+      echo ""
+      echo "Steps completed:"
+      echo "  - devStory: ✓"
+      echo "  - reviewGemini: ✓"
+      echo "  - reviewClaude: ✓"
+      echo "  - verify: ✓"
+      if [ "${{ steps.checkChanges.output }}" = "no_changes" ]; then
+        echo "  - commit: skipped (no changes)"
+      else
+        echo "  - commit: ✓"
+      fi
+      echo ""
+      echo "Post-commit: ${{ steps.postCommit.output }}"
+      echo "══════════════════════════════════════════════════════════════"

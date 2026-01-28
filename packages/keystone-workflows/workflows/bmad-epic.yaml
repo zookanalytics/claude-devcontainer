@@ -6,10 +6,6 @@ inputs:
   epic_id:
     type: string
     description: "Epic ID prefix (e.g., 'env-1')"
-  require_approval:
-    type: boolean
-    default: true
-    description: "If true, require human approval after each story"
   sprint_status_path:
     type: string
     default: "_bmad-output/implementation-artifacts/sprint-status.yaml"
@@ -78,9 +74,6 @@ steps:
       Stories to process:
       ${{ steps.loadStories.output }}
 
-      Settings:
-      - Require approval per story: ${{ inputs.require_approval }}
-
       Start processing?
     inputType: confirm
 
@@ -93,21 +86,62 @@ steps:
     path: bmad-story.yaml
     inputs:
       story_id: ${{ item }}
-      require_approval: ${{ inputs.require_approval }}
 
-  # Step 4: Summary
+  # Step 5: Generate summary report
+  - id: generateSummary
+    type: script
+    needs: [processStory]
+    run: |
+      const results = ${{ steps.processStory.output }};
+      const stories = ${{ steps.loadStories.output }};
+
+      let successful = 0;
+      let failed = 0;
+      const details = [];
+
+      for (let i = 0; i < stories.length; i++) {
+        const storyId = stories[i];
+        const result = results[i] || {};
+        const success = result.success !== false;
+
+        if (success) {
+          successful++;
+          details.push(`✅ ${storyId}: ${result.commit_state || 'completed'}`);
+        } else {
+          failed++;
+          details.push(`❌ ${storyId}: ${result.error || 'failed'}`);
+        }
+      }
+
+      return {
+        total: stories.length,
+        successful,
+        failed,
+        details: details.join('\n')
+      };
+
+  # Step 6: Display summary and confirm
   - id: summary
     type: human
-    needs: [processStory]
+    needs: [generateSummary]
     message: |
+      ══════════════════════════════════════════════════════════════
       Epic ${{ inputs.epic_id }} Processing Complete
+      ══════════════════════════════════════════════════════════════
 
-      All stories have been processed.
+      Stories: ${{ steps.generateSummary.output.total }} total
+        ✅ Successful: ${{ steps.generateSummary.output.successful }}
+        ❌ Failed: ${{ steps.generateSummary.output.failed }}
 
-      Review results and continue to completion checks?
+      Results:
+      ${{ steps.generateSummary.output.details }}
+
+      ══════════════════════════════════════════════════════════════
+
+      Continue to retrospective?
     inputType: confirm
 
-  # Step 5: Retrospective (interactive - no -p flag)
+  # Step 7: Retrospective (interactive - no -p flag)
   - id: retrospective
     type: shell
     needs: [summary]
@@ -116,7 +150,7 @@ steps:
       claude "/bmad:bmm:workflows:retrospective - Run retrospective for Epic ${{ inputs.epic_id }}."
     timeout: 1800000
 
-  # Step 6: Confirm retrospective complete
+  # Step 8: Confirm retrospective complete
   - id: confirmRetrospective
     type: human
     needs: [retrospective]
@@ -126,7 +160,7 @@ steps:
       Review the retrospective and continue to final evaluation?
     inputType: confirm
 
-  # Step 7: Final Evaluation/Synopsis
+  # Step 9: Final Evaluation/Synopsis
   - id: evaluation
     type: shell
     needs: [confirmRetrospective]
@@ -135,7 +169,7 @@ steps:
       claude -p "Perform final evaluation synopsis for Epic ${{ inputs.epic_id }}. Do not ask questions. Checklist: 1) Deliverables Check - list files created/modified, compare against planned deliverables, identify missing items. 2) Deviation Analysis - compare implementation vs tech spec, document deviations and scope changes. 3) Quality Gates - verify tests pass, check for TODO/FIXME comments, confirm docs updated. 4) Integration Verification - confirm proper integration, check for breaking changes. Save report to _bmad-output/implementation-artifacts/evaluations/epic-${{ inputs.epic_id }}-evaluation.md with ✅/⚠️/❌ format and final PASS/NEEDS_ATTENTION/FAIL status." --dangerously-skip-permissions
     timeout: 1800000
 
-  # Step 8: Final sign-off
+  # Step 10: Final sign-off
   - id: finalSignoff
     type: human
     needs: [evaluation]
