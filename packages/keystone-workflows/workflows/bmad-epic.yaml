@@ -91,6 +91,7 @@ steps:
   - id: generateSummary
     type: script
     needs: [processStory]
+    allowInsecure: true
     run: |
       const results = ${{ steps.processStory.output }};
       const stories = ${{ steps.loadStories.output }};

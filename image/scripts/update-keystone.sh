@@ -13,10 +13,19 @@ if ! bun install -g github:ZookAnalytics/keystone-cli; then
   UPDATE_FAILURES=$((UPDATE_FAILURES + 1))
 fi
 
-if ! bun install -g github:ZookAnalytics/claude-devcontainer#packages/keystone-workflows; then
+# keystone-workflows is in a monorepo subdirectory - clone and run postinstall directly
+TEMP_DIR=$(mktemp -d)
+if git clone --depth 1 --filter=blob:none --sparse https://github.com/ZookAnalytics/claude-devcontainer.git "$TEMP_DIR" 2>/dev/null && \
+   cd "$TEMP_DIR" && \
+   git sparse-checkout set packages/keystone-workflows && \
+   cd packages/keystone-workflows && \
+   ./scripts/postinstall.sh; then
+  echo "✓ keystone-workflows updated"
+else
   echo "⚠ keystone-workflows update failed, using existing version"
   UPDATE_FAILURES=$((UPDATE_FAILURES + 1))
 fi
+rm -rf "$TEMP_DIR"
 
 # Log versions for debugging
 echo "---"
