@@ -5,8 +5,8 @@ set -euo pipefail
 UPDATE_FAILURES=0
 
 echo "Updating keystone packages..."
-# Note: bun global installs may change symlink targets from ~/.local/lib to ~/.bun/install/global
-# This is acceptable - postinstall.sh uses ln -sf to cleanly overwrite existing symlinks
+# Note: bun global installs may change paths from ~/.local/lib to ~/.bun/install/global
+# This is acceptable - postinstall.sh uses cp -f to overwrite existing files
 
 if ! bun install -g github:ZookAnalytics/keystone-cli; then
   echo "⚠ keystone-cli update failed, using existing version"
@@ -37,7 +37,7 @@ if [ -f "$WORKFLOWS_PKG" ]; then
 else
   echo "keystone-workflows: (installed via bun global)"
 fi
-echo "workflows path: $(ls -la ~/.keystone/workflows/*.yaml 2>/dev/null | head -1 || echo 'not found')"
+echo "workflows path: $(ls -l ~/.keystone/workflows/*.yaml 2>/dev/null | head -1 || echo 'not found')"
 
 # Report update status (exit 0 for graceful degradation per AC5)
 if [ "$UPDATE_FAILURES" -gt 0 ]; then

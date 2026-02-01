@@ -16,13 +16,12 @@ if [ ! -d "$CONFIG_DIR" ]; then
 fi
 
 # 1. Install workflows to ~/.keystone/workflows/
-# Uses ln -sf to force-overwrite existing symlinks (handles updates cleanly)
 WORKFLOW_TARGET="$HOME/.keystone/workflows"
 mkdir -p "$WORKFLOW_TARGET"
 WORKFLOW_COUNT=0
 for f in "$WORKFLOWS_DIR"/*.yaml; do
   [ -e "$f" ] || continue  # Handle no matches
-  ln -sf "$f" "$WORKFLOW_TARGET/$(basename "$f")"  # -f overwrites existing
+  cp -f "$f" "$WORKFLOW_TARGET/$(basename "$f")"
   WORKFLOW_COUNT=$((WORKFLOW_COUNT + 1))
 done
 if [ "$WORKFLOW_COUNT" -eq 0 ]; then
