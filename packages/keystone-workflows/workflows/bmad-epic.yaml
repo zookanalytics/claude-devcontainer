@@ -81,6 +81,7 @@ steps:
   - id: processStory
     type: workflow
     needs: [confirmStart]
+    if: ${{ steps.confirmStart.output == true }}
     foreach: ${{ steps.loadStories.output }}
     concurrency: 1
     path: bmad-story.yaml
@@ -160,11 +161,12 @@ steps:
   - id: retrospective
     type: human
     needs: [summary]
+    if: ${{ steps.summary.output == true }}
     message: |
       Time for Epic ${{ inputs.epic_id }} retrospective.
 
       Please run in another terminal:
-        claude "/bmad:bmm:workflows:retrospective - Epic ${{ inputs.epic_id }}"
+        claude "/bmad-bmm-retrospective - Epic ${{ inputs.epic_id }}"
 
       Confirm when complete.
     inputType: confirm
