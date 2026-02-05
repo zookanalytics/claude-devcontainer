@@ -11,12 +11,6 @@
 
 set -euo pipefail
 
-# Validate required environment variable
-if [[ -z "${CLAUDE_PROJECT_DIR:-}" ]]; then
-    echo "Error: CLAUDE_PROJECT_DIR environment variable not set" >&2
-    exit 1
-fi
-
 # Read JSON input from stdin
 input=$(cat)
 
@@ -29,17 +23,27 @@ if [[ "$tool_name" != "Bash" ]]; then
     exit 0
 fi
 
-# Only process git commit commands (not git commit --amend which is handled separately)
-if ! echo "$command" | grep -qE '^\s*git\s+commit(\s|$)'; then
+# Only process commands containing git commit (not git commit --amend which is handled separately)
+# Match "git" followed by optional flags (like --no-pager, -C path) then "commit"
+# This prevents bypass via global git flags (e.g., "git --no-pager commit")
+if ! echo "$command" | grep -qE '\bgit\b.*\bcommit\b'; then
     exit 0
 fi
 
 # Allow git commit --amend (special case for pre-commit hook fixes)
-if echo "$command" | grep -qE '(\s|^)--amend\b'; then
+# Check that --amend appears as a real flag (before any quotes), not inside a commit message
+# e.g., "git commit --amend" OK, but "git commit -m 'has --amend'" should NOT be allowed
+if echo "$command" | grep -qE "\bcommit\b[^\"']*--amend"; then
     exit 0
 fi
 
-STATE_FILE="$CLAUDE_PROJECT_DIR/.claude/.commit-state.json"
+# Get git repository root (more reliable than CLAUDE_PROJECT_DIR for git operations)
+GIT_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || {
+    echo "Warning: Not in a git repository, skipping commit validation" >&2
+    exit 0
+}
+
+STATE_FILE="$GIT_ROOT/.claude/.commit-state.json"
 
 # Check if state file exists
 if [[ ! -f "$STATE_FILE" ]]; then
@@ -107,8 +111,9 @@ EOF
     exit 2
 fi
 
-# Clean up state file on successful validation
-rm -f "$STATE_FILE"
+# State file validated successfully. Don't delete it here - let it expire naturally (5 min).
+# This allows retry if git's own pre-commit hook fails, without requiring the workflow
+# to be re-run. The file will be cleaned up by the staleness check on the next commit.
 
 # Allow commit to proceed
 exit 0

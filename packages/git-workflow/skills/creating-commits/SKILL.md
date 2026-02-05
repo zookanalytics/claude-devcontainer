@@ -57,17 +57,22 @@ Before running `git add`, check current staging state:
 Write this file after steps 1-4 and before step 6:
 
 ```bash
-cat > .claude/.commit-state.json <<'EOF'
+GIT_ROOT=$(git rev-parse --show-toplevel) && \
+mkdir -p "$GIT_ROOT/.claude" && \
+cat > "$GIT_ROOT/.claude/.commit-state.json" <<'EOF'
 {
   "workflow_completed": true
 }
 EOF
 ```
 
-This signals the pre-commit hook that you followed the workflow.
-Expires in 5 minutes, auto-deletes after ANY `git commit` attempt (success or failure).
+**Important:** This command:
+1. Gets the git repository root (fails safely if not in a git repo)
+2. Creates `.claude/` directory if it doesn't exist
+3. Writes the state file at the correct location regardless of working directory
 
-**If commit fails/is blocked:** Rewrite this file before retrying.
+This signals the pre-commit hook that you followed the workflow.
+Considered stale after 5 minutes. If the commit fails (e.g., git's pre-commit hook rejects it), you can retry immediately without rewriting this file.
 
 ## Commit Message Format
 
