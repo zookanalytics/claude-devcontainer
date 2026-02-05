@@ -15,6 +15,9 @@
 #   │   ├── installation_id
 #   │   ├── settings.json
 #   │   └── tmp/
+#   ├── gh/                        # SHARED - GitHub CLI config (~/.config/gh)
+#   │   ├── hosts.yml              # GitHub auth tokens
+#   │   └── config.yml             # CLI preferences
 #   └── instance/                  # PER-INSTANCE isolation
 #       └── <instance-id>/
 #           ├── claude/            # -> symlink target for ~/.claude
@@ -80,7 +83,7 @@ rollback() {
   fi
 
   # Restore backups
-  for backup in "$HOME"/.claude.json.bak* "$HOME"/.claude.bak* "$HOME"/.gemini.bak*; do
+  for backup in "$HOME"/.claude.json.bak* "$HOME"/.claude.bak* "$HOME"/.gemini.bak* "$HOME"/.config/gh.bak*; do
     if [ -f "$backup" ] || [ -d "$backup" ]; then
       # Find the original name by removing .bak suffix
       original="${backup%.bak*}"
@@ -92,7 +95,7 @@ rollback() {
   done
 
   echo "Rollback complete. Manual recovery may be needed."
-  echo "Check: ~/.claude.json, ~/.claude, ~/.gemini"
+  echo "Check: ~/.claude.json, ~/.claude, ~/.gemini, ~/.config/gh"
 }
 
 # Track a symlink for potential rollback
@@ -450,6 +453,8 @@ if ! verify_writable "$HOME/.gemini"; then
   HEALTH_CHECK_FAILED=true
 fi
 
+# Note: ~/.config/gh is verified in Step 12 after creation
+
 if [ "$HEALTH_CHECK_FAILED" = true ]; then
   echo "E008: ERROR: Final health check failed. Rolling back..."
   exit 1
@@ -478,6 +483,50 @@ echo "  CLAUDE_INSTANCE=$INSTANCE_ID"
 
 check_fail_at_step 11
 
+# --- Step 12: Symlink ~/.config/gh -> shared directory ---
+echo ""
+echo "[12] Setting up GitHub CLI config (shared)..."
+
+# Ensure ~/.config directory exists
+mkdir -p "$HOME/.config"
+
+# Create shared gh directory
+create_dir "$SHARED_DATA/gh"
+
+# Migrate existing gh config to shared volume (only if shared is empty to avoid clobber)
+if [ -d "$HOME/.config/gh" ] && [ ! -L "$HOME/.config/gh" ] && [ -n "$(ls -A "$HOME/.config/gh" 2>/dev/null)" ]; then
+  if [ -z "$(ls -A "$SHARED_DATA/gh" 2>/dev/null)" ]; then
+    echo "  Migrating existing gh config to shared volume..."
+    cp -rp "$HOME/.config/gh/." "$SHARED_DATA/gh/" 2>/dev/null || true
+  else
+    echo "  Shared gh config already exists, skipping migration"
+  fi
+fi
+
+# Use standard backup function for cleanup
+if ! backup_if_not_symlink "$HOME/.config/gh"; then
+  exit 1
+fi
+
+if ! ln -sf "$SHARED_DATA/gh" "$HOME/.config/gh"; then
+  echo "E006: ERROR: Failed to create symlink: ~/.config/gh -> $SHARED_DATA/gh"
+  exit 1
+fi
+track_symlink "$HOME/.config/gh"
+
+# Verify symlink and writability
+if [ ! -L "$HOME/.config/gh" ]; then
+  echo "E007: ERROR: Symlink verification failed for: ~/.config/gh"
+  exit 1
+fi
+if ! verify_writable "$HOME/.config/gh"; then
+  echo "E008: ERROR: ~/.config/gh is not writable"
+  exit 1
+fi
+echo "  ~/.config/gh -> $SHARED_DATA/gh"
+
+check_fail_at_step 12
+
 # --- Success ---
 echo ""
 echo "Instance isolation complete for: $INSTANCE_ID"
@@ -489,4 +538,5 @@ echo "  Claude credentials: $SHARED_DATA/claude/credentials.json (shared)"
 echo "  Claude settings:    $SHARED_DATA/claude/settings.json (shared)"
 echo "  Claude config:      $SHARED_DATA/claude/config.json (shared - theme, MCP, state)"
 echo "  Gemini:             $SHARED_DATA/gemini/ (shared)"
+echo "  GitHub CLI:         $SHARED_DATA/gh/ (shared)"
 echo "  ZSH history:        $SHARED_DATA/instance/$INSTANCE_ID/zsh_history (per-instance)"
