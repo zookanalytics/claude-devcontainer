@@ -104,6 +104,8 @@ pnpm install -g "@google/gemini-cli@${GEMINI_CLI_VERSION}"
 echo "✓ CLI tools installed"
 
 # Step 6: Register plugin marketplaces from project settings
+# NOTE: Must run BEFORE firewall init (step 10) — marketplace registration
+# clones git repos and needs unrestricted network access.
 echo ""
 echo "[6/12] Registering plugin marketplaces..."
 /usr/local/bin/register-plugin-marketplaces.sh "$WORKSPACE_ROOT"

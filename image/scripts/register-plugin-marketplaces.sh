@@ -24,23 +24,28 @@ if [ ! -f "$PROJECT_SETTINGS" ]; then
 fi
 
 # Extract git URLs from extraKnownMarketplaces
-URLS=$(jq -r '
+if ! URLS=$(jq -r '
   .extraKnownMarketplaces // {} |
   to_entries[] |
   select(.value.source.source == "git") |
   .value.source.url
-' "$PROJECT_SETTINGS" 2>/dev/null)
+' "$PROJECT_SETTINGS" 2>&1); then
+  echo "  ⚠ Failed to parse $PROJECT_SETTINGS: $URLS"
+  exit 0
+fi
 
 if [ -z "$URLS" ]; then
   echo "  No extraKnownMarketplaces defined in project settings"
   exit 0
 fi
 
-echo "$URLS" | while read -r url; do
+# Registration is idempotent-safe: failures (including duplicates) are logged but non-fatal
+while IFS= read -r url; do
   echo "  Registering marketplace: $url"
-  if claude plugin marketplace add "$url" 2>&1; then
+  if output=$(timeout 30 claude plugin marketplace add "$url" 2>&1); then
     echo "  ✓ Registered: $url"
   else
     echo "  ⚠ Failed to register: $url"
+    echo "    $output"
   fi
-done
+done <<< "$URLS"
