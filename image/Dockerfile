@@ -163,6 +163,7 @@ COPY image/scripts/setup-claude-auth-sharing.sh /usr/local/bin/
 COPY image/scripts/search-history.sh /usr/local/bin/
 COPY image/scripts/fix-shared-data-permissions.sh /usr/local/bin/
 COPY image/scripts/update-keystone.sh /usr/local/bin/
+COPY image/scripts/register-plugin-marketplaces.sh /usr/local/bin/
 COPY image/scripts/devcontainer-sanity-check.sh /usr/local/bin/
 
 # Make scripts executable and configure sudo
@@ -183,6 +184,7 @@ RUN chmod 755 /usr/local/bin/init-firewall.sh && \
   chmod 755 /usr/local/bin/search-history.sh && \
   chmod 755 /usr/local/bin/fix-shared-data-permissions.sh && \
   chmod 755 /usr/local/bin/update-keystone.sh && \
+  chmod 755 /usr/local/bin/register-plugin-marketplaces.sh && \
   chmod 755 /usr/local/bin/devcontainer-sanity-check.sh && \
   echo "node ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh" > /etc/sudoers.d/node-commands && \
   echo "node ALL=(root) NOPASSWD: /usr/local/bin/assemble-managed-settings.sh" >> /etc/sudoers.d/node-commands && \
