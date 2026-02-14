@@ -8,7 +8,7 @@
   "scripts": {
     "build:image": "docker build -f image/Dockerfile -t claude-devcontainer:local .",
     "commitlint": "commitlint --edit",
-    "lint": "claude plugin validate . && pnpm -r lint",
+    "lint": "CLAUDECODE= claude plugin validate . && pnpm -r lint",
     "pre-commit": "pnpm -r --if-present run lint && pnpm -r --if-present run typecheck",
     "prepare": "husky",
     "test": "pnpm -r test",
